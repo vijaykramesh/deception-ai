@@ -1,0 +1,89 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# uv
+.uv/
+
+# Unit test / coverage reports
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+
+# Type checker / linter caches
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Env files / secrets
+.env
+.env.*
+OAI_CONFIG_LIST
+
+# Logs
+*.log
+
+# IDEs
+.idea/
+.idea/**
+*.iml
+*.ipr
+*.iws
+
+# JetBrains local settings
+.idea_modules/
+
+# JetBrains run configurations (local)
+.run/
+
+# VS Code
+.vscode/
+.vscode/**
+
+# Optional: keep workspace-recommended settings if you ever add them
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# Sublime / Atom / etc.
+*.sublime-workspace
+*.sublime-project
+.atom/
+
+# Vim / Emacs
+*~
+*.swp
+*.swo
+.netrwhist
+
+# OS-specific
+.DS_Store
+
+# Redis
+*.rdb
+
+# Local-only game assets (do not commit copyrighted game content)
+assets/*
+!assets/README.md
