@@ -1,12 +1,16 @@
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+import logging
 
 from app.api.routes import router
 from app.assets.startup import init_assets_for_app
 
 app = FastAPI(title="deception-ai", version="0.1.0")
 app.include_router(router)
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # Serve minimal web UI (no build step).
 # In some test/CI environments the static directory may be absent; don't fail import.

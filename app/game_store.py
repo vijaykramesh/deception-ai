@@ -300,6 +300,27 @@ async def create_game(
     # redis-py is synchronous. Some IDEs confuse `redis.Redis` with async variants,
     # so we route through getattr to avoid incorrect "coroutine not awaited" diagnostics.
     r_sync: redis.Redis = r  # type: ignore[assignment]
+
+    # --- Option B: cleanup any stale mailbox streams/groups for this game id (persistent Redis).
+    # This keeps test/dev runs deterministic without flushing the whole Redis DB.
+    try:
+        pattern = f"mailbox:{game_id}:*"
+        for key in getattr(r_sync, "scan_iter")(match=pattern):
+            # key is str with decode_responses=True, bytes otherwise
+            skey = key.decode() if isinstance(key, (bytes, bytearray)) else str(key)
+            # Best-effort destroy consumer group first (if any), then delete stream.
+            try:
+                getattr(r_sync, "xgroup_destroy")(skey, f"agents:{game_id}")
+            except Exception:
+                pass
+            try:
+                getattr(r_sync, "delete")(skey)
+            except Exception:
+                pass
+    except Exception:
+        # Swallow cleanup errors; game creation must still work.
+        pass
+
     key = _game_key(game_id)
     getattr(r_sync, "set")(key, state.model_dump_json())
     getattr(r_sync, "sadd")(GAMES_SET_KEY, str(game_id))

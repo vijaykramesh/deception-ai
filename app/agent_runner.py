@@ -102,6 +102,12 @@ async def handle_mailbox_entry(
         clue_id = fields.get("clue_id") or None
         means_id = fields.get("means_id") or None
 
+        # Backstop: if mailbox payload didn't include these (or older messages are being replayed),
+        # use the persisted game solution.
+        if (clue_id is None or means_id is None) and state.solution is not None:
+            clue_id = clue_id or state.solution.clue_id
+            means_id = means_id or state.solution.means_id
+
         # If assets don't include the expected tile categories, don't crash the agent runner.
         # We'll simply leave the game in the awaiting phase for manual handling.
         if not location_ids or not cause_ids:
