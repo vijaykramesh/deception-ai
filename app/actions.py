@@ -225,15 +225,8 @@ def dispatch_action(*, r: redis.Redis, game_id: UUID, player_id: str, action: Ac
             if fsm.current_state != fsm.awaiting_murder_pick:
                 raise ValueError("Game is not awaiting murder selection")
 
-            clue = str(payload.get("clue"))
-            means = str(payload.get("means"))
-
-            # Use the existing domain logic.
-            from app.game_store import set_murder_solution
-
-            # set_murder_solution is async; in dispatched sync path we keep things sync.
-            # The FastAPI route can call the async version directly; the dispatcher is
-            # used for tests and future generic endpoint.
+            # In the sync dispatcher path, we intentionally don't support this action.
+            # The FastAPI route uses the async handler.
             raise RuntimeError("Use async dispatcher for murder action")
 
         elif action == "discuss":

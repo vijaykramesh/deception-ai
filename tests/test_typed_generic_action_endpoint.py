@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
-from fastapi.testclient import TestClient
-
 
 def _find_player(data: dict, role: str) -> dict:
     for p in data["players"]:

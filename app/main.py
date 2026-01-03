@@ -1,7 +1,11 @@
+from __future__ import annotations
+
+from pathlib import Path
+import logging
+
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-import logging
 
 from app.api.routes import router
 from app.assets.startup import init_assets_for_app
@@ -14,8 +18,6 @@ logger = logging.getLogger(__name__)
 
 # Serve minimal web UI (no build step).
 # In some test/CI environments the static directory may be absent; don't fail import.
-from pathlib import Path
-
 _app_dir = Path(__file__).resolve().parent
 _project_root = _app_dir.parent
 

@@ -1,13 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Generator
-
 import fakeredis
 import pytest
 from fastapi.testclient import TestClient
-
-from app.api.deps import get_redis
-from app.main import app
 
 
 def _find_player(data: dict, role: str) -> dict:

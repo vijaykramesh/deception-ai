@@ -157,6 +157,31 @@ Edit `.env` to point at the OpenAI-compatible endpoint:
 - `OPENAI_MODEL=gpt-oss:20b`
 - `OPENAI_API_KEY=ollama`
 
+## CI (GitHub Actions)
+
+This repo has a required GitHub Actions workflow (`CI`) that runs on every push and pull request.
+
+**Checks that run (blocking):**
+
+- **Lint:** `ruff check .`
+- **Tests:** `pytest` (unit + non-Ollama integration tests)
+- **Coverage:** generated via `pytest-cov`
+  - `coverage.xml` (Cobertura XML)
+  - `htmlcov/` (HTML report)
+  - both are uploaded as workflow artifacts
+  - total line coverage is also written into the workflow run summary
+
+### Ollama/LLM integration tests in CI
+
+Some tests require a **live OpenAI-compatible LLM endpoint** (typically Ollama). These are intentionally
+**not run in CI by default**.
+
+They are "env-gated": they call `pytest.skip(...)` unless the right environment variables are set and the
+endpoint is reachable.
+
+Additionally, CI is configured so that the test suite **does not auto-load the repo's `.env`** (which would
+otherwise enable these tests unintentionally).
+
 ## Tests
 
 ### Run unit tests
@@ -184,6 +209,33 @@ uv sync --extra dev
 ### Integration tests
 
 Integration tests that require Ollama are **env-gated** and will skip unless `OPENAI_BASE_URL` / `OPENAI_MODEL` are configured and reachable.
+
+#### Run Ollama-gated tests locally
+
+1) Start Ollama and make sure your model is pulled.
+2) Set env vars (or put them in `.env`). Example `.env`:
+   - `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`
+   - `OPENAI_MODEL=gpt-oss:20b`
+
+Then run:
+
+```bash
+pytest
+```
+
+#### Run tests in “CI mode” locally (verify Ollama tests are skipped)
+
+```bash
+CI=1 pytest
+```
+
+#### Opt-in to loading `.env` even in CI mode
+
+If you *do* want to run Ollama integration tests in a CI-like environment, opt-in explicitly:
+
+```bash
+CI=1 DECEPTION_AI_LOAD_DOTENV_FOR_TESTS=1 pytest
+```
 
 ## License
 

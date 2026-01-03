@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-lint:
+    name: lint, test (coverage)
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" 
+          --health-interval 5s 
+          --health-timeout 3s 
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # Repo targets >=3.14, but GitHub-hosted runners may lag.
+          # Keep CI on the newest available stable to stay close.
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies (incl. dev)
+        run: uv sync --extra dev --frozen
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Unit tests (pytest) + coverage
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-report=xml --cov-report=html
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.xml
+            htmlcov
+          if-no-files-found: warn
+
+      - name: Coverage summary
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+
+          path = 'coverage.xml'
+          if not os.path.exists(path):
+              print('No coverage.xml found; skipping summary.')
+              raise SystemExit(0)
+
+          root = ET.parse(path).getroot()
+          # Cobertura-style: line-rate is 0..1
+          rate = root.attrib.get('line-rate')
+          pct = None
+          try:
+              pct = float(rate) * 100 if rate is not None else None
+          except ValueError:
+              pct = None
+
+          out_path = os.environ.get('GITHUB_STEP_SUMMARY')
+          if not out_path:
+              print('GITHUB_STEP_SUMMARY not set; skipping summary file.')
+              raise SystemExit(0)
+
+          with open(out_path, 'a', encoding='utf-8') as f:
+              f.write('## Test coverage\n')
+              if pct is None:
+                  f.write('- Total line coverage: (unable to parse)\n')
+              else:
+                  f.write(f'- Total line coverage: **{pct:.2f}%**\n')
+              f.write('\nArtifacts uploaded: `coverage.xml`, `htmlcov/`\n')
+          PY
