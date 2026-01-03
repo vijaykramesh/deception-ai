@@ -318,6 +318,36 @@
         min-height: 60px;
         resize: vertical;
       }
+
+      /* Role reveal / highlights */
+      .roleTag {
+        display: inline-block;
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(145, 164, 198, 0.10);
+        border: 1px solid rgba(145, 164, 198, 0.25);
+        color: var(--text);
+        white-space: nowrap;
+      }
+      .roleTag.unknown {
+        color: var(--muted);
+        border-style: dashed;
+      }
+      .roleTag.danger {
+        background: rgba(255, 107, 107, 0.14);
+        border-color: rgba(255, 107, 107, 0.35);
+        color: #ffd2d2;
+      }
+      .roleTag.success {
+        background: rgba(90, 255, 170, 0.12);
+        border-color: rgba(90, 255, 170, 0.30);
+        color: #d6ffea;
+      }
+      .tag.selected {
+        background: rgba(122, 162, 255, 0.22);
+        border-color: rgba(122, 162, 255, 0.55);
+      }
     </style>
   </head>
   <body>
@@ -464,30 +494,123 @@
         };
       }
 
-      function renderPlayer(p, cardNames) {
-        const roleText = formatRole(p.role);
+      function povLabel(pov) {
+        if (pov === 'fs') return 'Forensic Scientist';
+        if (pov === 'murderer') return 'Murderer';
+        if (pov === 'witness') return 'Witness';
+        if (pov === 'investigator') return 'Investigator';
+        return 'Forensic Scientist';
+      }
+
+      function getPov() {
+        return (window.__POV__ || localStorage.getItem('deception:pov') || 'fs');
+      }
+
+      function setPov(pov) {
+        window.__POV__ = pov;
+        localStorage.setItem('deception:pov', pov);
+      }
+
+      function canSeeAllRoles(pov) {
+        return pov === 'fs';
+      }
+
+      function canSeeMurderSelections(pov) {
+        return pov === 'fs' || pov === 'murderer';
+      }
+
+      function canSeeMurdererAccompliceHighlight(pov) {
+        return pov === 'fs' || pov === 'murderer' || pov === 'witness';
+      }
+
+      function roleBadgeFor(playerRole, pov, isFs) {
+        // FS role is always shown.
+        if (isFs) return { text: 'forensic scientist', cls: '' };
+
+        if (canSeeAllRoles(pov)) return { text: playerRole.replaceAll('_', ' '), cls: '' };
+
+        // Murderer POV: show murderer + accomplice roles, but keep others unknown.
+        if (pov === 'murderer') {
+          if (playerRole === 'murderer' || playerRole === 'accomplice') {
+            return { text: playerRole.replaceAll('_', ' '), cls: 'danger' };
+          }
+          return { text: 'unknown', cls: 'unknown' };
+        }
+
+        // Witness POV: show identities (murderer/accomplice) but not solution.
+        if (pov === 'witness') {
+          if (playerRole === 'murderer' || playerRole === 'accomplice') {
+            return { text: playerRole.replaceAll('_', ' '), cls: 'danger' };
+          }
+          if (playerRole === 'witness') {
+            return { text: 'witness', cls: 'success' };
+          }
+          return { text: 'unknown', cls: 'unknown' };
+        }
+
+        // Investigator POV: only know FS.
+        return { text: 'unknown', cls: 'unknown' };
+      }
+
+      function renderPlayer(p, cardNames, state, pov) {
+        const isFs = p.role === 'forensic_scientist';
+        const badge = roleBadgeFor(p.role, pov, isFs);
+
         const display = p.display_name || p.player_id;
+
         const header = el('header', {}, [
           el('div', {}, [
             el('div', { text: display, style: 'font-weight: 600' }),
-            el('div', { class: 'muted', text: `${p.player_id} · ${roleText}` }),
+            el('div', { class: 'muted', text: `${p.player_id}` }),
           ]),
           el('span', { class: 'pill', text: p.is_ai ? 'AI' : 'Human' }),
         ]);
 
+        // Determine whether to highlight this player's "identity" chip.
+        const highlightIdentity = canSeeMurdererAccompliceHighlight(pov) && (p.role === 'murderer' || p.role === 'accomplice');
+        const highlightWitness = (pov === 'fs') && (p.role === 'witness');
+
+        const roleCls = ['roleTag'];
+        if (badge.cls) roleCls.push(badge.cls);
+        if (highlightIdentity) roleCls.push('danger');
+        if (highlightWitness) roleCls.push('success');
+
+        const roleLine = el('div', { class: 'line' }, [
+          el('span', { class: 'muted', text: 'Role:' }),
+          el('span', { class: roleCls.join(' '), text: badge.text }),
+        ]);
+
+        // Selected chips for murderer solution (only visible in FS + murderer POV)
+        let selectedMeans = null;
+        let selectedClue = null;
+        if (canSeeMurderSelections(pov)) {
+          selectedMeans = state?.solution?.means_id || null;
+          selectedClue = state?.solution?.clue_id || null;
+        }
+
         const means = el('div', { class: 'line' }, [el('span', { class: 'muted', text: 'Means:' })]);
         for (const id of (p.hand?.means_ids || [])) {
           const name = cardNames?.means?.get(id) || id;
-          means.appendChild(el('span', { class: 'tag', 'data-id': id, title: id, text: name }));
+          const cls = ['tag'];
+          if (selectedMeans && id === selectedMeans && p.role === 'murderer') cls.push('selected');
+          means.appendChild(el('span', { class: cls.join(' '), 'data-id': id, title: id, text: name }));
         }
 
         const clues = el('div', { class: 'line' }, [el('span', { class: 'muted', text: 'Clues:' })]);
         for (const id of (p.hand?.clue_ids || [])) {
           const name = cardNames?.clues?.get(id) || id;
-          clues.appendChild(el('span', { class: 'tag', 'data-id': id, title: id, text: name }));
+          const cls = ['tag'];
+          if (selectedClue && id === selectedClue && p.role === 'murderer') cls.push('selected');
+          clues.appendChild(el('span', { class: cls.join(' '), 'data-id': id, title: id, text: name }));
         }
 
-        return el('div', { class: 'card player' }, [header, el('div', { class: 'hand' }, [means, clues])]);
+        // In FS view show role info for everyone; in other views roles are "unknown" except FS.
+        // We always show cards (as per your earlier FS POV rule), but only highlight selection chips
+        // when permitted.
+        return el('div', { class: 'card player' }, [
+          header,
+          el('div', { class: 'hand' }, [roleLine, means, clues]),
+        ]);
       }
 
       function renderDiscussion(state, playerId) {
@@ -534,6 +657,7 @@
       function layoutSeatsSquare(state, rootEl, cardNames) {
         rootEl.innerHTML = '';
 
+        const pov = getPov();
         const players = (state.players || []).slice().sort((a, b) => a.seat - b.seat);
         const fs = players.find((p) => p.role === 'forensic_scientist');
         const others = players.filter((p) => p !== fs);
@@ -543,12 +667,11 @@
 
         const isStacked = window.matchMedia('(max-width: 980px)').matches;
         if (isStacked) {
-          for (const p of others) rootEl.appendChild(el('div', { class: 'seat' }, [renderPlayer(p, cardNames)]));
-          if (fs) rootEl.appendChild(el('div', { class: 'seat fs' }, [renderPlayer(fs, cardNames)]));
+          for (const p of others) rootEl.appendChild(el('div', { class: 'seat' }, [renderPlayer(p, cardNames, state, pov)]));
+          if (fs) rootEl.appendChild(el('div', { class: 'seat fs' }, [renderPlayer(fs, cardNames, state, pov)]));
           return;
         }
 
-        // Clockwise slots, starting at the bottom with FS, then clockwise.
         const slots = [
           { className: 'slot fs bottomMid', player: fs },
           { className: 'slot bottomLeft', player: null },
@@ -567,7 +690,7 @@
 
         for (const s of slots) {
           if (!s.player) continue;
-          rootEl.appendChild(el('div', { class: s.className }, [renderPlayer(s.player, cardNames)]));
+          rootEl.appendChild(el('div', { class: s.className }, [renderPlayer(s.player, cardNames, state, pov)]));
         }
       }
 
@@ -596,9 +719,27 @@
         const controls = el('div', { class: 'card', style: 'margin-bottom: 12px' }, [
           el('div', { class: 'title' }, [
             el('h1', { text: 'View settings' }),
-            el('small', { class: 'muted', text: 'Forensic Scientist POV (public cards shown)' }),
+            el('small', { class: 'muted', text: 'Perspective toggle' }),
           ]),
           el('div', { class: 'row', style: 'margin-top: 10px' }, [
+            el('label', { class: 'muted', text: 'POV' }),
+            (() => {
+              const sel = el('select', { id: 'povSelect', style: 'min-width: 220px' }, [
+                el('option', { value: 'fs', text: 'Forensic Scientist' }),
+                el('option', { value: 'murderer', text: 'Murderer' }),
+                el('option', { value: 'witness', text: 'Witness' }),
+                el('option', { value: 'investigator', text: 'Investigator' }),
+              ]);
+              sel.value = getPov();
+              sel.addEventListener('change', () => {
+                setPov(sel.value);
+                // trigger a rerender by refetching state quickly
+                // (rerender uses getPov())
+                const evt = new CustomEvent('deception:pov_changed');
+                window.dispatchEvent(evt);
+              });
+              return sel;
+            })(),
             el('label', { class: 'muted', text: 'Post as player_id' }),
             el('input', { id: 'postAs', placeholder: 'e.g. p1', style: 'min-width: 160px' }),
             el('span', { class: 'muted', text: '(must match a player_id in state)' }),
@@ -647,6 +788,10 @@
         }
 
         rerender(state);
+
+        // Rerender locally when POV changes (no refetch needed).
+        const onPovChanged = () => rerender(state);
+        window.addEventListener('deception:pov_changed', onPovChanged);
 
         // Re-layout on resize.
         let resizeTimer = null;
