@@ -14,7 +14,7 @@ from app.lock import game_lock
 from app.streams import Mailbox, publish_many
 
 
-ActionName = Literal["murder", "discuss", "solve"]
+ActionName = Literal["murder", "fs_scene", "discuss", "solve"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +104,50 @@ def _mailbox_entries_for_murder_picked(*, state: GameState) -> list[tuple[str, d
         )
 
     return entries
+
+
+def _mailbox_entries_for_fs_scene_prompt(*, state: GameState) -> list[tuple[str, dict[str, str]]]:
+    """Prompt the Forensic Scientist to pick the public Location + Cause of Death tiles."""
+
+    gid = str(state.game_id)
+    fs = next((p for p in state.players if p.role == "forensic_scientist"), None)
+    if fs is None:
+        return []
+
+    from app.game_store import _cause_ids_from_assets, _location_ids_from_assets
+
+    location_ids = _location_ids_from_assets()
+    cause_ids = _cause_ids_from_assets()
+
+    return [
+        (
+            Mailbox(game_id=gid, player_id=fs.player_id).key,
+            {
+                "type": "prompt_fs_scene_pick",
+                "game_id": gid,
+                "player_id": fs.player_id,
+                "phase": state.phase.value,
+                "location_ids": ",".join(location_ids),
+                "cause_ids": ",".join(cause_ids),
+                "ts": _now_iso(),
+            },
+        )
+    ]
+
+
+def _mailbox_entries_for_fs_scene_picked(*, state: GameState) -> list[tuple[str, dict[str, str]]]:
+    gid = str(state.game_id)
+    if not state.fs_location_id or not state.fs_cause_id:
+        return []
+
+    payload = {
+        "type": "fs_scene_selected",
+        "game_id": gid,
+        "location_id": state.fs_location_id,
+        "cause_id": state.fs_cause_id,
+        "ts": _now_iso(),
+    }
+    return [(Mailbox(game_id=gid, player_id=p.player_id).key, payload) for p in state.players]
 
 
 def dispatch_action(*, r: redis.Redis, game_id: UUID, player_id: str, action: ActionName, payload: dict[str, Any]) -> ActionResult:
@@ -202,6 +246,7 @@ async def dispatch_action_async(
         fsm = GameFSM(state)
 
         did_murder_pick = False
+        did_fs_scene_pick = False
 
         if action == "murder":
             if fsm.current_state != fsm.awaiting_murder_pick:
@@ -216,6 +261,21 @@ async def dispatch_action_async(
                 means_id=str(payload.get("means")),
             )
             did_murder_pick = True
+            fsm = GameFSM(state)
+
+        elif action == "fs_scene":
+            if state.phase != GamePhase.setup_awaiting_fs_scene_pick:
+                raise ValueError("Game is not awaiting forensic scientist scene selection")
+            from app.game_store import set_fs_scene_selection
+
+            state = await set_fs_scene_selection(
+                r=r,
+                game_id=game_id,
+                player_id=player_id,
+                location_id=str(payload.get("location")),
+                cause_id=str(payload.get("cause")),
+            )
+            did_fs_scene_pick = True
             fsm = GameFSM(state)
 
         elif action == "discuss":
@@ -252,11 +312,15 @@ async def dispatch_action_async(
         fsm.sync_phase_to_model()
         save_game(r=r, state=state)
 
-        entries = []
+        entries: list[tuple[str, dict[str, str]]] = []
         # Always notify everyone that state changed.
         entries.extend(_mailbox_entries_for_state_changed(state=state))
-        # If we just completed the murder pick step, also send role-specific info.
+        # If we just completed the murder pick step, also send role-specific info and FS prompt.
         if did_murder_pick:
             entries.extend(_mailbox_entries_for_murder_picked(state=state))
+            entries.extend(_mailbox_entries_for_fs_scene_prompt(state=state))
+        if did_fs_scene_pick:
+            entries.extend(_mailbox_entries_for_fs_scene_picked(state=state))
+
         ids = publish_many(r=r, entries=entries)
         return ActionResult(state=state, mailbox_entry_ids=ids)

@@ -516,7 +516,7 @@
       }
 
       function canSeeMurderSelections(pov) {
-        return pov === 'fs' || pov === 'murderer';
+        return pov === 'fs' || pov === 'murderer' || pov === 'accomplice';
       }
 
       function canSeeMurdererAccompliceHighlight(pov) {
@@ -613,6 +613,23 @@
         ]);
       }
 
+      function renderScene(state, cardNames) {
+        const locId = state?.fs_location_id || null;
+        const causeId = state?.fs_cause_id || null;
+
+        const lines = [];
+        lines.push(el('div', { class: 'line' }, [el('span', { class: 'muted', text: 'Location:' }), el('span', { text: locId || '—' })]));
+        lines.push(el('div', { class: 'line' }, [el('span', { class: 'muted', text: 'Cause of Death:' }), el('span', { text: causeId || '—' })]));
+
+        return el('div', { class: 'card', style: 'margin-bottom: 12px' }, [
+          el('div', { class: 'title' }, [
+            el('h1', { text: 'Scene (public)' }),
+            el('small', { class: 'muted', text: `phase: ${state.phase}` }),
+          ]),
+          ...lines,
+        ]);
+      }
+
       function renderDiscussion(state, playerId) {
         const log = el('div', { class: 'log', id: 'log' });
         for (const m of state.discussion || []) {
@@ -663,6 +680,8 @@
         const others = players.filter((p) => p !== fs);
 
         const center = el('div', { class: 'center', id: 'centerCol' });
+        // Add scene block for everyone.
+        center.appendChild(renderScene(state, cardNames));
         rootEl.appendChild(center);
 
         const isStacked = window.matchMedia('(max-width: 980px)').matches;

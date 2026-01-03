@@ -34,6 +34,11 @@ class MurderPickRequest(BaseModel):
     means: str
 
 
+class FsScenePickRequest(BaseModel):
+    location: str
+    cause: str
+
+
 class DiscussRequest(BaseModel):
     comments: str = Field(..., min_length=1, max_length=4000)
 
@@ -72,6 +77,7 @@ class PlayerState(BaseModel):
 
 class GamePhase(StrEnum):
     setup_awaiting_murder_pick = "setup_awaiting_murder_pick"
+    setup_awaiting_fs_scene_pick = "setup_awaiting_fs_scene_pick"
     discussion = "discussion"
     completed = "completed"
 
@@ -92,6 +98,10 @@ class GameState(BaseModel):
 
     # Global hidden solution (server truth). Only some players get it copied into their player state.
     solution: Solution | None = None
+
+    # Forensic Scientist pre-discussion scene setup.
+    fs_location_id: str | None = None
+    fs_cause_id: str | None = None
 
     # When completed.
     winning_investigator_id: str | None = None

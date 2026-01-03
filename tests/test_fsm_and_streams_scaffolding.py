@@ -64,7 +64,7 @@ def test_generic_action_endpoint_publishes_mailbox_state_changed(client_and_redi
     assert resp2.status_code == 200
 
     updated = resp2.json()
-    assert updated["phase"] == "discussion"
+    assert updated["phase"] == "setup_awaiting_fs_scene_pick"
 
     # Every player should have received a state_changed stream message.
     gid = updated["game_id"]
@@ -73,7 +73,7 @@ def test_generic_action_endpoint_publishes_mailbox_state_changed(client_and_redi
         entries = r.xrange(key)
         assert len(entries) >= 1
         _, fields = entries[-1]
-        assert fields["type"] in {"state_changed", "murder_solution_chosen", "witness_identities_revealed"}
+        assert fields["type"] in {"state_changed", "murder_solution_chosen", "witness_identities_revealed", "prompt_fs_scene_pick"}
 
     # Murderer should also have a murder_solution_chosen message.
     m_entries = r.xrange(f"mailbox:{gid}:{murderer['player_id']}")

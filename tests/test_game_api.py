@@ -50,6 +50,35 @@ def _find_player(data: dict, role: str) -> dict:
     raise AssertionError(f"role not found: {role}")
 
 
+def _pick_any_location_and_cause_ids() -> tuple[str, str]:
+    from app.assets.singleton import get_assets
+
+    assets = get_assets()
+    lcd = assets.location_and_cause_of_death_tiles
+
+    # Real asset data may include multiple tiles like "Location 1".."Location 4".
+    loc_tiles = sorted([t for t in lcd.by_tile.keys() if t.casefold().startswith("location")])
+    cause_tiles = sorted([t for t in lcd.by_tile.keys() if t.casefold().startswith("cause of death")])
+
+    if not loc_tiles or not cause_tiles:
+        raise RuntimeError("Missing Location/Cause of Death tiles in assets")
+
+    loc_tile = loc_tiles[0]
+    cause_tile = cause_tiles[0]
+
+    loc_opt = next(iter(lcd.options_for(loc_tile)), None)
+    cause_opt = next(iter(lcd.options_for(cause_tile)), None)
+    if not loc_opt or not cause_opt:
+        raise RuntimeError("No options found for Location/Cause of Death tiles")
+
+    loc_id = lcd.resolve_id(loc_tile, loc_opt)
+    cause_id = lcd.resolve_id(cause_tile, cause_opt)
+    if not loc_id or not cause_id:
+        raise RuntimeError("Failed to resolve tile option IDs")
+
+    return loc_id, cause_id
+
+
 def test_post_game_creates_and_persists_state(client: TestClient) -> None:
     resp = client.post("/game", json={"num_ai_players": 3, "num_human_players": 1})
     assert resp.status_code == 201
@@ -67,11 +96,26 @@ def test_post_game_creates_and_persists_state(client: TestClient) -> None:
     assert resp_pick.status_code == 200
     data2 = resp_pick.json()
 
-    assert data2["phase"] == "discussion"
+    assert data2["phase"] == "setup_awaiting_fs_scene_pick"
     assert data2["solution"] == {"clue_id": pick["clue"], "means_id": pick["means"]}
 
-    fs = _find_player(data2, "forensic_scientist")
-    murderer2 = _find_player(data2, "murderer")
+    # FS submits the public scene selection (location + cause of death)
+    loc, cause = _pick_any_location_and_cause_ids()
+
+    fs_player = _find_player(data2, "forensic_scientist")
+    resp_scene = client.post(
+        f"/game/{data2['game_id']}/player/{fs_player['player_id']}/fs_scene",
+        json={"location": loc, "cause": cause},
+    )
+    assert resp_scene.status_code == 200
+    data2b = resp_scene.json()
+
+    assert data2b["phase"] == "discussion"
+    assert data2b["fs_location_id"] == loc
+    assert data2b["fs_cause_id"] == cause
+
+    fs = _find_player(data2b, "forensic_scientist")
+    murderer2 = _find_player(data2b, "murderer")
 
     # FS + murderer know solution.
     assert fs["knows_solution"] is True
@@ -80,14 +124,14 @@ def test_post_game_creates_and_persists_state(client: TestClient) -> None:
     assert murderer2["solution"] is not None
 
     # No witness/accomplice in 4-player game.
-    for p in data2["players"]:
+    for p in data2b["players"]:
         assert p["knows_identities"] is False
         assert p["known_murderer_id"] is None
         assert p["known_accomplice_id"] is None
 
     # Discuss
-    inv = _find_player(data2, "investigator")
-    resp_discuss = client.post(f"/game/{data2['game_id']}/player/{inv['player_id']}/discuss", json={"comments": "Hello"})
+    inv = _find_player(data2b, "investigator")
+    resp_discuss = client.post(f"/game/{data2b['game_id']}/player/{inv['player_id']}/discuss", json={"comments": "Hello"})
     assert resp_discuss.status_code == 200
     data3 = resp_discuss.json()
     assert data3["discussion"][0]["seq"] == 1
@@ -96,7 +140,7 @@ def test_post_game_creates_and_persists_state(client: TestClient) -> None:
 
     # Wrong solve: lose badge.
     wrong = {"murderer": "p999", "clue": "nope", "means": "nope"}
-    resp_solve = client.post(f"/game/{data2['game_id']}/player/{inv['player_id']}/solve", json=wrong)
+    resp_solve = client.post(f"/game/{data2b['game_id']}/player/{inv['player_id']}/solve", json=wrong)
     assert resp_solve.status_code == 200
     data4 = resp_solve.json()
     inv2 = next(p for p in data4["players"] if p["player_id"] == inv["player_id"])
@@ -104,11 +148,11 @@ def test_post_game_creates_and_persists_state(client: TestClient) -> None:
     assert data4["phase"] == "discussion"
 
     # Second solve attempt should be rejected.
-    resp_solve2 = client.post(f"/game/{data2['game_id']}/player/{inv['player_id']}/solve", json=wrong)
+    resp_solve2 = client.post(f"/game/{data2b['game_id']}/player/{inv['player_id']}/solve", json=wrong)
     assert resp_solve2.status_code == 422
 
     # GET by id
-    gid = data2["game_id"]
+    gid = data2b["game_id"]
     resp2 = client.get(f"/game/{gid}")
     assert resp2.status_code == 200
     assert resp2.json()["game_id"] == gid
@@ -154,10 +198,22 @@ def test_post_game_roles_with_witness_and_accomplice(client: TestClient) -> None
     assert witness["known_murderer_id"] == murderer["player_id"]
     assert witness["known_accomplice_id"] == accomplice["player_id"]
 
+    # Need FS scene selection before solving.
+    loc, cause = _pick_any_location_and_cause_ids()
+
+    fs_player = _find_player(data2, "forensic_scientist")
+    resp_scene = client.post(
+        f"/game/{data2['game_id']}/player/{fs_player['player_id']}/fs_scene",
+        json={"location": loc, "cause": cause},
+    )
+    assert resp_scene.status_code == 200
+    data2b = resp_scene.json()
+    assert data2b["phase"] == "discussion"
+
     # Correct solve ends game
-    inv = _find_player(data2, "investigator")
+    inv = _find_player(data2b, "investigator")
     correct = {"murderer": murderer["player_id"], "clue": pick["clue"], "means": pick["means"]}
-    resp_solve = client.post(f"/game/{data2['game_id']}/player/{inv['player_id']}/solve", json=correct)
+    resp_solve = client.post(f"/game/{data2b['game_id']}/player/{inv['player_id']}/solve", json=correct)
     assert resp_solve.status_code == 200
     done = resp_solve.json()
     assert done["phase"] == "completed"

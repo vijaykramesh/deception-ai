@@ -24,6 +24,38 @@ def _game_key(game_id: UUID) -> str:
     return f"{GAME_KEY_PREFIX}{game_id}"
 
 
+def _location_ids_from_assets() -> list[str]:
+    assets = get_assets()
+    lcd = assets.location_and_cause_of_death_tiles
+
+    # Real datasets often have multiple location tiles (e.g., "Location 1", "Location 2", ...).
+    # We treat any tile whose canonical name starts with "Location" as a valid Location tile.
+    location_tiles = [t for t in lcd.by_tile.keys() if t.casefold().startswith("location")]
+
+    ids: list[str] = []
+    for tile in sorted(location_tiles):
+        allowed_options = set(lcd.options_for(tile))
+        ids.extend([o.id for o in lcd.by_id.values() if o.tile == tile and o.option in allowed_options])
+
+    # Stable order for determinism.
+    return sorted(set(ids))
+
+
+def _cause_ids_from_assets() -> list[str]:
+    assets = get_assets()
+    lcd = assets.location_and_cause_of_death_tiles
+
+    # Some datasets may have multiple cause tiles too (e.g., "Cause of Death 1").
+    cause_tiles = [t for t in lcd.by_tile.keys() if t.casefold().startswith("cause of death")]
+
+    ids: list[str] = []
+    for tile in sorted(cause_tiles):
+        allowed_options = set(lcd.options_for(tile))
+        ids.extend([o.id for o in lcd.by_id.values() if o.tile == tile and o.option in allowed_options])
+
+    return sorted(set(ids))
+
+
 def validate_player_counts(
     *,
     num_ai_players: int,
@@ -93,6 +125,67 @@ async def set_murder_solution(
 
     sol = Solution(means_id=means_id, clue_id=clue_id)
     apply_solution_and_secrets(state=state, solution=sol)
+
+    # Next: Forensic Scientist selects the (public) Location + Cause-of-Death tiles.
+    state.phase = GamePhase.setup_awaiting_fs_scene_pick
+
+    save_game(r=r, state=state)
+
+    # Enqueue prompt to the FS (AI FS can act on this via agent_runner).
+    fs = next((p for p in state.players if p.role == "forensic_scientist"), None)
+    if fs is not None:
+        location_ids = _location_ids_from_assets()
+        cause_ids = _cause_ids_from_assets()
+
+        publish_to_mailbox(
+            r=r,
+            mailbox=Mailbox(game_id=str(game_id), player_id=fs.player_id),
+            fields={
+                "type": "prompt_fs_scene_pick",
+                "game_id": str(game_id),
+                "player_id": fs.player_id,
+                "phase": state.phase.value,
+                "location_ids": ",".join(location_ids),
+                "cause_ids": ",".join(cause_ids),
+            },
+        )
+
+    return state
+
+
+async def set_fs_scene_selection(
+    *,
+    r: redis.Redis,
+    game_id: UUID,
+    player_id: str,
+    location_id: str,
+    cause_id: str,
+) -> GameState:
+    state = require_game(r=r, game_id=game_id)
+    pidx = require_player(state=state, player_id=player_id)
+    player = state.players[pidx]
+
+    if state.phase != GamePhase.setup_awaiting_fs_scene_pick:
+        raise ValueError("Game is not awaiting forensic scientist scene selection")
+
+    if player.role != "forensic_scientist":
+        raise ValueError("Only the forensic scientist can set the scene selection")
+
+    assets = get_assets()
+    lcd = assets.location_and_cause_of_death_tiles
+
+    allowed_locations = set(_location_ids_from_assets())
+    allowed_causes = set(_cause_ids_from_assets())
+
+    if location_id not in allowed_locations:
+        raise ValueError("location must be a valid Location tile option id")
+    if cause_id not in allowed_causes:
+        raise ValueError("cause must be a valid Cause of Death tile option id")
+
+    state.fs_location_id = location_id
+    state.fs_cause_id = cause_id
+
+    # After scene selection, the table discussion begins.
     state.phase = GamePhase.discussion
 
     save_game(r=r, state=state)
@@ -192,6 +285,8 @@ async def create_game(
         players=players,
         phase=GamePhase.setup_awaiting_murder_pick,
         solution=None,
+        fs_location_id=None,
+        fs_cause_id=None,
         winning_investigator_id=None,
         discussion=[],
     )

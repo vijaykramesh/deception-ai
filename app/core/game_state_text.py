@@ -1,0 +1,91 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from app.api.models import GameState
+from app.assets.registry import GameAssets
+
+
+@dataclass(frozen=True, slots=True)
+class GameStateParagraphOptions:
+    viewer_player_id: str | None = None
+
+
+def _player_label(display_name: str | None, player_id: str) -> str:
+    return display_name or player_id
+
+
+def _sorted_players(state: GameState):
+    return sorted(state.players, key=lambda p: p.seat)
+
+
+def _can_see_solution(*, pov: str) -> bool:
+    return pov in {"fs", "murderer", "accomplice"}
+
+
+def _can_see_identities(*, pov: str) -> bool:
+    # witness sees murderer+accomplice identities (not solution)
+    return pov in {"fs", "murderer", "witness", "accomplice"}
+
+
+def game_state_to_paragraph(*, state: GameState, assets: GameAssets, pov: str) -> str:
+    """Deterministic single-paragraph summary with POV-based redaction.
+
+    POV values match UI toggles: fs, murderer, accomplice, witness, investigator.
+    """
+
+    players = _sorted_players(state)
+
+    fs = next((p for p in players if p.role == "forensic_scientist"), None)
+    murderer = next((p for p in players if p.role == "murderer"), None)
+    accomplice = next((p for p in players if p.role == "accomplice"), None)
+    witness = next((p for p in players if p.role == "witness"), None)
+
+    sent: list[str] = []
+
+    # Scene tiles (public). Resolve to human text when possible.
+    if state.fs_location_id and state.fs_cause_id:
+        loc_opt = assets.location_and_cause_of_death_tiles.get(state.fs_location_id)
+        cause_opt = assets.location_and_cause_of_death_tiles.get(state.fs_cause_id)
+        loc_txt = loc_opt.option if loc_opt is not None else state.fs_location_id
+        cause_txt = cause_opt.option if cause_opt is not None else state.fs_cause_id
+        sent.append(f"Scene: Location is '{loc_txt}' and Cause of Death is '{cause_txt}'.")
+    else:
+        sent.append("Scene: Location and Cause of Death have not been selected yet.")
+
+    # Roles / identities.
+    if fs is not None:
+        sent.append(f"Forensic Scientist: {_player_label(fs.display_name, fs.player_id)} (seat {fs.seat}).")
+
+    if _can_see_identities(pov=pov):
+        if murderer is not None:
+            sent.append(f"Murderer: {_player_label(murderer.display_name, murderer.player_id)} (seat {murderer.seat}).")
+        if accomplice is not None:
+            sent.append(f"Accomplice: {_player_label(accomplice.display_name, accomplice.player_id)} (seat {accomplice.seat}).")
+        if witness is not None and pov == "fs":
+            sent.append(f"Witness: {_player_label(witness.display_name, witness.player_id)} (seat {witness.seat}).")
+
+    # Murder solution.
+    if _can_see_solution(pov=pov) and state.solution is not None and murderer is not None:
+        means_card = assets.means_cards.get(state.solution.means_id)
+        clue_card = assets.clue_cards.get(state.solution.clue_id)
+        means_txt = means_card.name if means_card is not None else state.solution.means_id
+        clue_txt = clue_card.name if clue_card is not None else state.solution.clue_id
+        sent.append(
+            f"Murder solution (secret): the murderer chose Means '{means_txt}' and Evidence '{clue_txt}'."
+        )
+
+    # Full hands.
+    # Game UI rule: the FS has access to all hands for guiding; for other POVs, only show their own hand.
+    if pov == "fs":
+        chunks = []
+        for p in players:
+            means = [assets.means_cards.get(mid).name if assets.means_cards.get(mid) else mid for mid in p.hand.means_ids]
+            clues = [assets.clue_cards.get(cid).name if assets.clue_cards.get(cid) else cid for cid in p.hand.clue_ids]
+            chunks.append(
+                f"{_player_label(p.display_name, p.player_id)}(seat {p.seat}): Means={means}; Clues={clues}."
+            )
+        sent.append("Hands: " + " ".join(chunks))
+
+    return " ".join(sent)
+

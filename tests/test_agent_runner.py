@@ -86,10 +86,10 @@ async def test_agent_runner_consumes_prompt_and_submits_murder_action(
     handled = await ar.run_agent_step(r=r, game_id=state["game_id"], player_id=murderer["player_id"], config=ar.AgentRunnerConfig(block_ms=0, count=10))
     assert handled is True
 
-    # Game should now be in discussion.
+    # Game should now be awaiting forensic scientist scene pick.
     resp3 = client.get(f"/game/{state['game_id']}")
     assert resp3.status_code == 200
     updated = resp3.json()
-    assert updated["phase"] == "discussion"
+    assert updated["phase"] == "setup_awaiting_fs_scene_pick"
     assert updated["solution"] is not None
 

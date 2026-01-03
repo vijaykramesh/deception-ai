@@ -9,12 +9,21 @@ from typing import Any
 from app.actions import ActionName, dispatch_action_async
 from app.agent_runner import AgentRunnerConfig, run_game_agents_once
 from app.api.deps import get_redis
-from app.api.models import DiscussRequest, GameCreateRequest, GameListResponse, GameState, MurderPickRequest, SolveRequest
+from app.api.models import (
+    DiscussRequest,
+    FsScenePickRequest,
+    GameCreateRequest,
+    GameListResponse,
+    GameState,
+    MurderPickRequest,
+    SolveRequest,
+)
 from app.game_store import (
     add_discussion_comment,
     create_game,
     get_game,
     list_games,
+    set_fs_scene_selection,
     set_murder_solution,
     submit_solution_guess,
 )
@@ -127,6 +136,28 @@ async def solve_route(
     return state
 
 
+@router.post("/game/{game_id}/player/{player_id}/fs_scene", response_model=GameState)
+async def fs_scene_pick_route(
+    game_id: UUID,
+    player_id: str,
+    payload: FsScenePickRequest,
+    r: redis.Redis = Depends(get_redis),
+) -> GameState:
+    try:
+        state = await set_fs_scene_selection(
+            r=r,
+            game_id=game_id,
+            player_id=player_id,
+            location_id=payload.location,
+            cause_id=payload.cause,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
+
+    await hub.broadcast(str(game_id), {"type": "game_updated", "game_id": str(game_id)})
+    return state
+
+
 @router.post("/games/{game_id}/actions/{action}", response_model=GameState)
 async def generic_action_route(
     game_id: UUID,
@@ -135,7 +166,7 @@ async def generic_action_route(
     r: redis.Redis = Depends(get_redis),
 ) -> GameState:
     try:
-        if action not in {"murder", "discuss", "solve"}:
+        if action not in {"murder", "fs_scene", "discuss", "solve"}:
             raise ValueError(f"Unknown action: {action}")
         act: ActionName = action  # type: ignore[assignment]
         pid = body.get("player_id")

@@ -119,6 +119,7 @@ class CardList:
                 raise AssetLoadError(f"Duplicate card id: {c.id}")
             id_to_card[c.id] = c
             key_to_id[_norm_key(c.name)] = c.id
+
         return CardList(cards=tuple(rows), _id_to_card=id_to_card, _key_to_id=key_to_id)
 
     def get(self, id: str) -> Card | None:
@@ -195,11 +196,12 @@ def load_tile_csv(path: Path) -> TileSet:
         raise AssetLoadError(f"Empty tile CSV: {path}")
 
     header = [c.casefold() for c in rows[0]]
-    if header[:3] != ["id", "tile", "option"]:
-        raise AssetLoadError(f"Unexpected header in {path}: {rows[0]}")
+    headerless = header[:3] != ["id", "tile", "option"]
 
     out: list[TileOption] = []
-    for row in rows[1:]:
+    data_rows = rows if headerless else rows[1:]
+
+    for row in data_rows:
         if len(row) < 3:
             continue
         rid, tile, option = row[0].strip(), row[1].strip(), row[2].strip()
@@ -208,6 +210,9 @@ def load_tile_csv(path: Path) -> TileSet:
         if not rid:
             rid = f"{_slug_id(tile)}__{_slug_id(option)}"
         out.append(TileOption(id=rid, tile=tile, option=option))
+
+    if not out:
+        raise AssetLoadError(f"No usable tile rows found in {path}")
 
     return TileSet.from_rows(out)
 
@@ -281,8 +286,6 @@ def _fallback_game_assets() -> GameAssets:
 def load_game_assets(*, root: Path) -> GameAssets:
     assets_dir = root / "assets"
 
-    # Default behavior: fall back to a tiny dummy dataset when files are missing.
-    # You can force strict behavior by setting DECEPTION_AI_STRICT_ASSETS=1.
     strict = os.getenv("DECEPTION_AI_STRICT_ASSETS", "").strip().lower() in {"1", "true", "yes"}
 
     try:
@@ -296,3 +299,4 @@ def load_game_assets(*, root: Path) -> GameAssets:
         if strict:
             raise
         return _fallback_game_assets()
+

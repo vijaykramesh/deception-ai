@@ -37,12 +37,12 @@ async def test_agent_runner_ollama_env_gated() -> None:
     # Create 4 AI players so murderer is AI.
     state = await create_game(r=r, num_ai_players=4, num_human_players=0)
 
-    # Run the agents once; murderer should pick and move phase to discussion.
+    # Run the agents once; murderer should pick and move phase to FS scene pick.
     handled = await run_game_agents_once(r=r, game_id=str(state.game_id), config=AgentRunnerConfig(block_ms=100, count=10))
     assert handled is True
 
     updated = get_game(r=r, game_id=state.game_id)
     assert updated is not None
-    assert updated.phase == GamePhase.discussion
+    assert updated.phase == GamePhase.setup_awaiting_fs_scene_pick
     assert updated.solution is not None
 

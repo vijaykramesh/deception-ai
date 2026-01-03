@@ -80,6 +80,36 @@ async def handle_mailbox_entry(
         )
         return True
 
+    if msg_type == "prompt_fs_scene_pick":
+        from uuid import UUID
+
+        gid = UUID(game_id)
+
+        location_ids = [s for s in (fields.get("location_ids") or "").split(",") if s]
+        cause_ids = [s for s in (fields.get("cause_ids") or "").split(",") if s]
+
+        # If assets don't include the expected tile categories, don't crash the agent runner.
+        # We'll simply leave the game in the awaiting phase for manual handling.
+        if not location_ids or not cause_ids:
+            return False
+
+        location_id, cause_id = await decide_and_pick_fs_scene_via_llm(
+            r=r,
+            game_id=game_id,
+            fs_id=player_id,
+            location_ids=location_ids or None,
+            cause_ids=cause_ids or None,
+        )
+
+        await dispatch_action_async(
+            r=r,
+            game_id=gid,
+            player_id=player_id,
+            action="fs_scene",
+            payload={"player_id": player_id, "location": location_id, "cause": cause_id},
+        )
+        return True
+
     # For now, ignore other mailbox message types.
     return False
 
@@ -199,3 +229,54 @@ async def decide_and_pick_solution_via_llm(
     )
 
     return picked.clue, picked.means
+
+
+async def decide_and_pick_fs_scene_via_llm(
+    *,
+    r: redis.Redis,
+    game_id: str,
+    fs_id: str,
+    location_ids: list[str] | None = None,
+    cause_ids: list[str] | None = None,
+) -> tuple[str, str]:
+    """Use the FS agent to pick Location + Cause of Death from allowed IDs."""
+
+    from uuid import UUID
+
+    from app.agents.scene_picker import pick_scene_with_agent
+    from app.game_store import _cause_ids_from_assets, _location_ids_from_assets
+
+    state = get_game(r=r, game_id=UUID(game_id))
+    if state is None:
+        raise ValueError("Game not found")
+
+    fs = next(p for p in state.players if p.player_id == fs_id)
+
+    all_location_ids = _location_ids_from_assets()
+    all_cause_ids = _cause_ids_from_assets()
+
+    allowed_locations = location_ids if location_ids is not None else all_location_ids
+    allowed_causes = cause_ids if cause_ids is not None else all_cause_ids
+
+    base = make_base_player_context(system_prefix="")
+    player_ctx = PlayerContext(
+        player_id=fs.player_id,
+        display_name=f"Seat {fs.seat} (Forensic Scientist)",
+        prompt=(
+            "You are the Forensic Scientist. Choose the Location and Cause of Death "
+            "from the allowed IDs provided."
+        ),
+    )
+    role_ctx = make_role_context(RoleName.forensic_scientist)
+    ctx = compose_context(base=base, player=player_ctx, role=role_ctx)
+
+    agent = create_default_agent(name=f"fs-{fs.player_id}")
+
+    picked = await pick_scene_with_agent(
+        agent=agent,
+        ctx=ctx,
+        location_ids=list(allowed_locations),
+        cause_ids=list(allowed_causes),
+    )
+
+    return picked.location, picked.cause
