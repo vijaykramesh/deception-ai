@@ -95,13 +95,33 @@ Only this documentation file should be tracked:
 
 All other files in `assets/` should be **ignored** by git so they remain local.
 
-## Dummy / fallback assets (tests & CI)
+> Note: The test suite uses **separate** tracked fixtures under `tests/assets/`.
+> Those fixtures are intentionally minimal/obfuscated so tests and CI can run
+> without requiring (or distributing) the original game content.
 
-If the real CSV files are not present (common in CI, or if you haven’t added your local licensed files yet), the app will fall back to a **small built-in dummy dataset** so that:
+## Tests & CI assets (`tests/assets`)
 
-- unit tests can run,
-- the API can still create games (deal hands, assign roles, etc.).
+Tests run in **strict assets** mode and load data from `tests/assets/` (not from
+this `assets/` folder).
+
+- The pytest session fixture in `tests/conftest.py` sets `DECEPTION_AI_STRICT_ASSETS=1`.
+- It initializes the asset registry with a **fake project root** of `tests/`, so the loader
+  finds CSVs at `tests/assets/*.csv`.
+
+This keeps tests hermetic and prevents coupling to local licensed files.
+
+### Strict mode
 
 To force *strict* behavior (error if any asset CSV is missing), set:
 
 - `DECEPTION_AI_STRICT_ASSETS=1`
+
+### Regenerating test fixtures
+
+If you update your local runtime CSVs in `assets/` and need to refresh the obfuscated
+test fixtures under `tests/assets/`, use:
+
+- `scripts/generate_test_assets.py`
+
+This script reads from `assets/` (local-only) and produces deterministic, sanitized
+CSVs for `tests/assets/` that preserve a small set of sentinel names/values used by tests.
