@@ -53,8 +53,17 @@ async def handle_mailbox_entry(
 
     msg_type = fields.get("type")
 
+    # Phase-gating: on persistent Redis, we may see older messages when using group fallback.
+    # Never act on a prompt that doesn't match the current game phase.
+    from uuid import UUID
+
+    state = get_game(r=r, game_id=UUID(game_id))
+    if state is None:
+        return False
+
     if msg_type == "prompt_murder_pick":
-        from uuid import UUID
+        if state.phase.value != "setup_awaiting_murder_pick":
+            return False
 
         gid = UUID(game_id)
 
@@ -81,12 +90,17 @@ async def handle_mailbox_entry(
         return True
 
     if msg_type == "prompt_fs_scene_pick":
-        from uuid import UUID
+        if state.phase.value != "setup_awaiting_fs_scene_pick":
+            return False
 
         gid = UUID(game_id)
 
         location_ids = [s for s in (fields.get("location_ids") or "").split(",") if s]
         cause_ids = [s for s in (fields.get("cause_ids") or "").split(",") if s]
+
+        # Optional: the chosen solution (if provided) so the FS can pick a coherent scene.
+        clue_id = fields.get("clue_id") or None
+        means_id = fields.get("means_id") or None
 
         # If assets don't include the expected tile categories, don't crash the agent runner.
         # We'll simply leave the game in the awaiting phase for manual handling.
@@ -99,6 +113,8 @@ async def handle_mailbox_entry(
             fs_id=player_id,
             location_ids=location_ids or None,
             cause_ids=cause_ids or None,
+            clue_id=clue_id,
+            means_id=means_id,
         )
 
         await dispatch_action_async(
@@ -135,8 +151,23 @@ async def run_agent_step(*, r: redis.Redis, game_id: str, player_id: str, config
 
     ensure_mailbox_group(r=r_sync, stream_key=stream_key, group=group)
 
+    def _read(start_id: str):
+        return r_sync.xreadgroup(group, consumer, {stream_key: start_id}, count=cfg.count, block=cfg.block_ms)
+
     # Read new messages (">" means never-delivered messages).
-    resp = r_sync.xreadgroup(group, consumer, {stream_key: ">"}, count=cfg.count, block=cfg.block_ms)
+    resp = _read(">")
+
+    # If nothing was returned but the stream has entries, we may be in a situation where
+    # messages are pending/claimed by the group from a previous run (common with persistent
+    # Redis in env-gated integration tests). Do a single fallback read from "0".
+    if not resp:
+        try:
+            if r_sync.xlen(stream_key) > 0:
+                resp = _read("0")
+        except Exception:
+            # If xlen/xreadgroup fails for any reason, keep original behavior.
+            resp = resp
+
     if not resp:
         return False
 
@@ -155,6 +186,8 @@ async def run_agent_step(*, r: redis.Redis, game_id: str, player_id: str, config
 async def run_game_agents_once(*, r: redis.Redis, game_id: str, config: AgentRunnerConfig | None = None) -> bool:
     """Run one scan over all AI players in a given game.
 
+    Deterministic behavior: handle at most ONE prompt per invocation.
+
     Returns True if any agent handled a prompt.
     """
 
@@ -164,13 +197,22 @@ async def run_game_agents_once(*, r: redis.Redis, game_id: str, config: AgentRun
     if state is None:
         return False
 
-    handled_any = False
-    for p in state.players:
-        if not p.is_ai:
-            continue
-        handled_any = (await run_agent_step(r=r, game_id=game_id, player_id=p.player_id, config=config)) or handled_any
+    # Only try to run agents that are relevant to the current setup phase.
+    # This ensures a single call doesn't advance through multiple phases.
+    if state.phase.value == "setup_awaiting_murder_pick":
+        murderer = next((p for p in state.players if p.role == "murderer" and p.is_ai), None)
+        if murderer is None:
+            return False
+        return await run_agent_step(r=r, game_id=game_id, player_id=murderer.player_id, config=config)
 
-    return handled_any
+    if state.phase.value == "setup_awaiting_fs_scene_pick":
+        fs = next((p for p in state.players if p.role == "forensic_scientist" and p.is_ai), None)
+        if fs is None:
+            return False
+        return await run_agent_step(r=r, game_id=game_id, player_id=fs.player_id, config=config)
+
+    # In other phases (discussion/completed), do nothing for now.
+    return False
 
 
 # ---- LLM decision helper (kept separate so tests can monkeypatch it) ----
@@ -238,8 +280,14 @@ async def decide_and_pick_fs_scene_via_llm(
     fs_id: str,
     location_ids: list[str] | None = None,
     cause_ids: list[str] | None = None,
+    clue_id: str | None = None,
+    means_id: str | None = None,
 ) -> tuple[str, str]:
-    """Use the FS agent to pick Location + Cause of Death from allowed IDs."""
+    """Use the FS agent to pick Location + Cause of Death from allowed IDs.
+
+    If clue_id/means_id are given (e.g., from the mailbox prompt), we incorporate them into the
+    FS prompt so the decision is explicitly conditioned on the selected solution.
+    """
 
     from uuid import UUID
 
@@ -259,12 +307,20 @@ async def decide_and_pick_fs_scene_via_llm(
     allowed_causes = cause_ids if cause_ids is not None else all_cause_ids
 
     base = make_base_player_context(system_prefix="")
+    extra = ""
+    if clue_id and means_id:
+        extra = (
+            "\n\nThe murderer has already selected the true solution. "
+            f"Selected clue_id={clue_id} and means_id={means_id}. "
+            "Pick a Location and Cause of Death that best fit this selection."
+        )
+
     player_ctx = PlayerContext(
         player_id=fs.player_id,
         display_name=f"Seat {fs.seat} (Forensic Scientist)",
         prompt=(
             "You are the Forensic Scientist. Choose the Location and Cause of Death "
-            "from the allowed IDs provided."
+            "from the allowed IDs provided." + extra
         ),
     )
     role_ctx = make_role_context(RoleName.forensic_scientist)

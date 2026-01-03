@@ -12,12 +12,18 @@ app.include_router(router)
 # In some test/CI environments the static directory may be absent; don't fail import.
 from pathlib import Path
 
-_static_dir = Path(__file__).resolve().parent / "static"
+_app_dir = Path(__file__).resolve().parent
+_project_root = _app_dir.parent
+
+_static_dir = _app_dir / "static"
 if _static_dir.exists():
     app.mount("/ui", StaticFiles(directory=str(_static_dir), html=True), name="ui")
 
 # Expose raw CSVs for id->name lookups in the UI.
-app.mount("/ui-assets", StaticFiles(directory="assets", html=False), name="ui-assets")
+# Use an absolute path so running from a different CWD (e.g., `pytest` from tests/) works.
+_assets_dir = _project_root / "assets"
+if _assets_dir.exists():
+    app.mount("/ui-assets", StaticFiles(directory=str(_assets_dir), html=False), name="ui-assets")
 
 
 @app.on_event("startup")

@@ -64,6 +64,12 @@ async def create_game_route(payload: GameCreateRequest, r: redis.Redis = Depends
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
 
+    # Kick off the setup flow by enqueuing the initial murderer prompt.
+    from app.actions import enqueue_setup_prompts_on_create
+    from app.streams import publish_many
+
+    publish_many(r=r, entries=enqueue_setup_prompts_on_create(state=state))
+
     await hub.broadcast(str(state.game_id), {"type": "game_updated", "game_id": str(state.game_id)})
     return state
 

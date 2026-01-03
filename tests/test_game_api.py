@@ -50,21 +50,36 @@ def _find_player(data: dict, role: str) -> dict:
     raise AssertionError(f"role not found: {role}")
 
 
-def _pick_any_location_and_cause_ids() -> tuple[str, str]:
+def _pick_any_location_and_cause_ids(*, data: dict | None = None) -> tuple[str, str]:
+    """Pick valid location/cause option ids.
+
+    If `data` contains `fs_location_tile/fs_cause_tile` (returned by the API),
+    pick options from those dealt tile cards. Otherwise fall back to the first
+    location/cause tiles in the assets (legacy behavior).
+    """
+
     from app.assets.singleton import get_assets
 
     assets = get_assets()
     lcd = assets.location_and_cause_of_death_tiles
 
-    # Real asset data may include multiple tiles like "Location 1".."Location 4".
     loc_tiles = sorted([t for t in lcd.by_tile.keys() if t.casefold().startswith("location")])
     cause_tiles = sorted([t for t in lcd.by_tile.keys() if t.casefold().startswith("cause of death")])
 
     if not loc_tiles or not cause_tiles:
         raise RuntimeError("Missing Location/Cause of Death tiles in assets")
 
-    loc_tile = loc_tiles[0]
-    cause_tile = cause_tiles[0]
+    loc_tile = None
+    cause_tile = None
+    if data is not None:
+        loc_tile = data.get("fs_location_tile")
+        cause_tile = data.get("fs_cause_tile")
+
+    # Fallback to deterministic tiles if API/game state doesn't expose dealt tiles.
+    if not isinstance(loc_tile, str) or not loc_tile:
+        loc_tile = loc_tiles[0]
+    if not isinstance(cause_tile, str) or not cause_tile:
+        cause_tile = cause_tiles[0]
 
     loc_opt = next(iter(lcd.options_for(loc_tile)), None)
     cause_opt = next(iter(lcd.options_for(cause_tile)), None)
@@ -100,7 +115,7 @@ def test_post_game_creates_and_persists_state(client: TestClient) -> None:
     assert data2["solution"] == {"clue_id": pick["clue"], "means_id": pick["means"]}
 
     # FS submits the public scene selection (location + cause of death)
-    loc, cause = _pick_any_location_and_cause_ids()
+    loc, cause = _pick_any_location_and_cause_ids(data=data2)
 
     fs_player = _find_player(data2, "forensic_scientist")
     resp_scene = client.post(
@@ -199,7 +214,7 @@ def test_post_game_roles_with_witness_and_accomplice(client: TestClient) -> None
     assert witness["known_accomplice_id"] == accomplice["player_id"]
 
     # Need FS scene selection before solving.
-    loc, cause = _pick_any_location_and_cause_ids()
+    loc, cause = _pick_any_location_and_cause_ids(data=data2)
 
     fs_player = _find_player(data2, "forensic_scientist")
     resp_scene = client.post(

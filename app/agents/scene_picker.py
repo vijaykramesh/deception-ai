@@ -27,21 +27,43 @@ def parse_picked_scene(text: str) -> PickedScene:
         {"location_id": "<id>", "cause_id": "<id>"}
     """
 
+    raw = text.strip()
+
+    # Handle common markdown fenced JSON blocks.
+    if raw.startswith("```"):
+        lines = [ln for ln in raw.splitlines() if ln.strip()]
+        # Drop first fence line and optional trailing fence line.
+        if lines and lines[0].lstrip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].rstrip().endswith("```"):
+            lines = lines[:-1]
+        raw = "\n".join(lines).strip()
+
     try:
-        data = json.loads(text)
+        data = json.loads(raw)
     except json.JSONDecodeError as e:
         raise ScenePickError(f"Invalid JSON: {e}") from e
 
     if not isinstance(data, dict):
         raise ScenePickError("Expected a JSON object")
 
+    # Canonical keys.
     location = data.get("location")
     cause = data.get("cause")
 
+    # Common variants.
     if location is None:
         location = data.get("location_id")
     if cause is None:
         cause = data.get("cause_id")
+
+    # Other common variants seen in the wild.
+    if location is None:
+        location = data.get("selected_location_id")
+    if cause is None:
+        cause = data.get("selected_cause_of_death_id")
+    if cause is None:
+        cause = data.get("cause_of_death_id")
 
     if not isinstance(location, str) or not location.strip():
         raise ScenePickError("Missing/invalid 'location' field")
@@ -62,10 +84,19 @@ _SCENE_SCHEMA = JsonSchema(
             # Accept common variants.
             "location_id": {"type": "string"},
             "cause_id": {"type": "string"},
+            # Other common variants.
+            "cause_of_death_id": {"type": "string"},
+            "selected_location_id": {"type": "string"},
+            "selected_cause_of_death_id": {"type": "string"},
         },
         "anyOf": [
             {"required": ["location", "cause"]},
             {"required": ["location_id", "cause_id"]},
+            {"required": ["location", "cause_id"]},
+            {"required": ["location_id", "cause"]},
+            {"required": ["selected_location_id", "selected_cause_of_death_id"]},
+            {"required": ["location_id", "cause_of_death_id"]},
+            {"required": ["location", "cause_of_death_id"]},
         ],
     },
     strict=True,
@@ -119,4 +150,3 @@ async def pick_scene_with_agent(
         return picked
 
     raise ScenePickError(f"Failed to pick a valid scene after {max_attempts} attempts: {last_err}")
-

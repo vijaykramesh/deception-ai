@@ -9,7 +9,6 @@ import redis
 from app.api.models import GamePhase, GameState, Solution
 from app.assets.singleton import get_assets
 from app.game_setup import apply_solution_and_secrets, build_initial_players, deal_hands
-from app.streams import Mailbox, publish_to_mailbox
 
 
 GAMES_SET_KEY = "deception:games"
@@ -131,24 +130,9 @@ async def set_murder_solution(
 
     save_game(r=r, state=state)
 
-    # Enqueue prompt to the FS (AI FS can act on this via agent_runner).
-    fs = next((p for p in state.players if p.role == "forensic_scientist"), None)
-    if fs is not None:
-        location_ids = _location_ids_from_assets()
-        cause_ids = _cause_ids_from_assets()
-
-        publish_to_mailbox(
-            r=r,
-            mailbox=Mailbox(game_id=str(game_id), player_id=fs.player_id),
-            fields={
-                "type": "prompt_fs_scene_pick",
-                "game_id": str(game_id),
-                "player_id": fs.player_id,
-                "phase": state.phase.value,
-                "location_ids": ",".join(location_ids),
-                "cause_ids": ",".join(cause_ids),
-            },
-        )
+    # NOTE: We intentionally do not publish any mailbox prompts here.
+    # Setup flow prompts are emitted by the action dispatcher (app/actions.py)
+    # to ensure consistent ordering across human + AI actions.
 
     return state
 
@@ -174,13 +158,22 @@ async def set_fs_scene_selection(
     assets = get_assets()
     lcd = assets.location_and_cause_of_death_tiles
 
-    allowed_locations = set(_location_ids_from_assets())
-    allowed_causes = set(_cause_ids_from_assets())
+    # Allowed options come only from the dealt tile cards.
+    # Backwards-compat: if tiles aren't set (older games/tests), allow any valid option ids.
+    if state.fs_location_tile:
+        allowed_locations = {o.id for o in lcd.by_id.values() if o.tile == state.fs_location_tile}
+    else:
+        allowed_locations = set(_location_ids_from_assets())
+
+    if state.fs_cause_tile:
+        allowed_causes = {o.id for o in lcd.by_id.values() if o.tile == state.fs_cause_tile}
+    else:
+        allowed_causes = set(_cause_ids_from_assets())
 
     if location_id not in allowed_locations:
-        raise ValueError("location must be a valid Location tile option id")
+        raise ValueError("location must be a valid option id")
     if cause_id not in allowed_causes:
-        raise ValueError("cause must be a valid Cause of Death tile option id")
+        raise ValueError("cause must be a valid option id")
 
     state.fs_location_id = location_id
     state.fs_cause_id = cause_id
@@ -272,8 +265,19 @@ async def create_game(
 
     players = build_initial_players(num_ai_players=num_ai_players, num_human_players=num_human_players, rng=rng)
 
+    # Deal hands (4 means + 4 clues) to everyone except the forensic scientist.
+    await deal_hands(assets=get_assets(), players=players, rng=rng)
+
+    # Pre-select which public tile cards the FS will use.
+    # We pick exactly one Location tile card and exactly one Cause-of-Death tile card.
     assets = get_assets()
-    await deal_hands(assets=assets, players=players, rng=rng)
+    lcd = assets.location_and_cause_of_death_tiles
+
+    location_tiles = sorted([t for t in lcd.by_tile.keys() if t.casefold().startswith("location")])
+    cause_tiles = sorted([t for t in lcd.by_tile.keys() if t.casefold().startswith("cause of death")])
+
+    selected_location_tile = rng.choice(location_tiles) if location_tiles else None
+    selected_cause_tile = rng.choice(cause_tiles) if cause_tiles else None
 
     state = GameState(
         game_id=game_id,
@@ -289,28 +293,23 @@ async def create_game(
         fs_cause_id=None,
         winning_investigator_id=None,
         discussion=[],
+        fs_location_tile=selected_location_tile,
+        fs_cause_tile=selected_cause_tile,
     )
 
-    r_sync = r  # type: ignore[assignment]
+    # redis-py is synchronous. Some IDEs confuse `redis.Redis` with async variants,
+    # so we route through getattr to avoid incorrect "coroutine not awaited" diagnostics.
+    r_sync: redis.Redis = r  # type: ignore[assignment]
     key = _game_key(game_id)
-    r_sync.set(key, state.model_dump_json())
-    r_sync.sadd(GAMES_SET_KEY, str(game_id))
+    getattr(r_sync, "set")(key, state.model_dump_json())
+    getattr(r_sync, "sadd")(GAMES_SET_KEY, str(game_id))
 
-    # Enqueue initial prompt to the murderer.
-    murderer = next((p for p in state.players if p.role == "murderer"), None)
-    if murderer is not None:
-        publish_to_mailbox(
-            r=r,
-            mailbox=Mailbox(game_id=str(game_id), player_id=murderer.player_id),
-            fields={
-                "type": "prompt_murder_pick",
-                "game_id": str(game_id),
-                "player_id": murderer.player_id,
-                "phase": state.phase.value,
-                "clue_ids": ",".join(murderer.hand.clue_ids),
-                "means_ids": ",".join(murderer.hand.means_ids),
-            },
-        )
+    # Kick off setup for callers that don't go through the API layer (e.g. integration tests)
+    # by publishing the initial murderer prompt.
+    from app.actions import enqueue_setup_prompts_on_create
+    from app.streams import publish_many
+
+    publish_many(r=r_sync, entries=enqueue_setup_prompts_on_create(state=state))
 
     return state
 

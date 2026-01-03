@@ -5,19 +5,19 @@ from app.assets.singleton import get_assets
 from app.game_store import create_game, set_fs_scene_selection, set_murder_solution
 
 
-def _pick_any_location_and_cause_ids():
+def _pick_any_location_and_cause_ids(*, state) -> tuple[str, str]:  # type: ignore[no-untyped-def]
     assets = get_assets()
     lcd = assets.location_and_cause_of_death_tiles
 
-    loc_tile = lcd.resolve_tile("Location 1")
-    cause_tile = lcd.resolve_tile("Cause of Death")
+    loc_tile = getattr(state, "fs_location_tile", None)
+    cause_tile = getattr(state, "fs_cause_tile", None)
     if not loc_tile or not cause_tile:
-        raise RuntimeError("Missing Location/Cause of Death tiles in assets")
+        raise RuntimeError("Game state is missing fs_location_tile/fs_cause_tile")
 
     loc_opt = next(iter(lcd.options_for(loc_tile)), None)
     cause_opt = next(iter(lcd.options_for(cause_tile)), None)
     if not loc_opt or not cause_opt:
-        raise RuntimeError("No options found for Location/Cause of Death tiles")
+        raise RuntimeError("No options found for dealt Location/Cause of Death tiles")
 
     loc_id = lcd.resolve_id(loc_tile, loc_opt)
     cause_id = lcd.resolve_id(cause_tile, cause_opt)
@@ -45,7 +45,7 @@ async def test_fs_scene_selection_happy_path(client_and_redis) -> None:
     assert state.phase == GamePhase.setup_awaiting_fs_scene_pick
 
     fs = next(p for p in state.players if p.role == "forensic_scientist")
-    loc, cause = _pick_any_location_and_cause_ids()
+    loc, cause = _pick_any_location_and_cause_ids(state=state)
 
     state = await set_fs_scene_selection(
         r=r,
@@ -75,7 +75,7 @@ async def test_fs_scene_selection_wrong_role_rejected(client_and_redis) -> None:
         means_id=murderer.hand.means_ids[0],
     )
 
-    loc, cause = _pick_any_location_and_cause_ids()
+    loc, cause = _pick_any_location_and_cause_ids(state=state)
     not_fs = next(p for p in state.players if p.role != "forensic_scientist")
 
     with pytest.raises(ValueError):

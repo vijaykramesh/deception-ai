@@ -17,7 +17,11 @@ def _ollama_ready() -> bool:
 
 @pytest.mark.asyncio
 async def test_agent_runner_ollama_env_gated() -> None:
-    """Integration test: agent runner consumes prompt_murder_pick and uses LLM to pick.
+    """Integration test: agent runner consumes setup prompts and uses LLM to progress setup.
+
+    Depending on timing and mailbox contents, a single `run_game_agents_once` call may:
+      - only process the murder pick (ending in setup_awaiting_fs_scene_pick), OR
+      - process both murder pick + FS scene pick (ending in discussion).
 
     Required env vars (example for Ollama):
       - OPENAI_BASE_URL=http://127.0.0.1:11434/v1
@@ -34,15 +38,26 @@ async def test_agent_runner_ollama_env_gated() -> None:
 
     r = redis.Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True)
 
-    # Create 4 AI players so murderer is AI.
+    # Create 4 AI players so murderer + FS are AI.
     state = await create_game(r=r, num_ai_players=4, num_human_players=0)
 
-    # Run the agents once; murderer should pick and move phase to FS scene pick.
-    handled = await run_game_agents_once(r=r, game_id=str(state.game_id), config=AgentRunnerConfig(block_ms=100, count=10))
+    cfg = AgentRunnerConfig(block_ms=100, count=10)
+
+    # Run once: murderer should pick and move phase to awaiting FS scene pick.
+    handled = await run_game_agents_once(r=r, game_id=str(state.game_id), config=cfg)
     assert handled is True
 
     updated = get_game(r=r, game_id=state.game_id)
     assert updated is not None
-    assert updated.phase == GamePhase.setup_awaiting_fs_scene_pick
     assert updated.solution is not None
+    assert updated.phase == GamePhase.setup_awaiting_fs_scene_pick
 
+    # Run again: FS should pick and move to discussion.
+    handled2 = await run_game_agents_once(r=r, game_id=str(state.game_id), config=cfg)
+    assert handled2 is True
+
+    updated2 = get_game(r=r, game_id=state.game_id)
+    assert updated2 is not None
+    assert updated2.phase == GamePhase.discussion
+    assert updated2.fs_location_id is not None
+    assert updated2.fs_cause_id is not None

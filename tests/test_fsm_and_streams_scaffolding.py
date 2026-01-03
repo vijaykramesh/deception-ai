@@ -73,8 +73,34 @@ def test_generic_action_endpoint_publishes_mailbox_state_changed(client_and_redi
         entries = r.xrange(key)
         assert len(entries) >= 1
         _, fields = entries[-1]
-        assert fields["type"] in {"state_changed", "murder_solution_chosen", "witness_identities_revealed", "prompt_fs_scene_pick"}
+        assert fields["type"] in {
+            "state_changed",
+            "murder_solution_chosen",
+            "witness_identities_revealed",
+            "prompt_fs_scene_pick",
+        }
 
     # Murderer should also have a murder_solution_chosen message.
     m_entries = r.xrange(f"mailbox:{gid}:{murderer['player_id']}")
     assert any(f.get("type") == "murder_solution_chosen" for _, f in m_entries)
+
+    # FS prompt should include the selected clue/means and arrive after secrets.
+    fs = _find_player(updated, "forensic_scientist")
+    fs_entries = r.xrange(f"mailbox:{gid}:{fs['player_id']}")
+    fs_prompt = next((f for _, f in fs_entries if f.get("type") == "prompt_fs_scene_pick"), None)
+    assert fs_prompt is not None
+    assert fs_prompt.get("clue_id") == body["clue"]
+    assert fs_prompt.get("means_id") == body["means"]
+
+    # FS should be restricted to exactly one dealt Location tile card and one Cause-of-Death card.
+    assert fs_prompt.get("location_tile")
+    assert fs_prompt.get("cause_tile")
+
+    fs_location_ids = [s for s in (fs_prompt.get("location_ids") or "").split(",") if s]
+    fs_cause_ids = [s for s in (fs_prompt.get("cause_ids") or "").split(",") if s]
+    assert fs_location_ids
+    assert fs_cause_ids
+
+    # Should only include one location tile group.
+    tiles = {lid.split("__")[0] for lid in fs_location_ids}
+    assert len(tiles) == 1

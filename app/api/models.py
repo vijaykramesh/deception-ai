@@ -100,6 +100,11 @@ class GameState(BaseModel):
     solution: Solution | None = None
 
     # Forensic Scientist pre-discussion scene setup.
+    # We first deal the *tile cards* (one Location card and one Cause-of-Death card),
+    # then the FS chooses a specific option id from each.
+    fs_location_tile: str | None = None
+    fs_cause_tile: str | None = None
+
     fs_location_id: str | None = None
     fs_cause_id: str | None = None
 

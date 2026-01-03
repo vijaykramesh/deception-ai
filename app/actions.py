@@ -66,11 +66,10 @@ def _mailbox_entries_for_murder_picked(*, state: GameState) -> list[tuple[str, d
     murderer = next((p for p in state.players if p.role == "murderer"), None)
     accomplice = next((p for p in state.players if p.role == "accomplice"), None)
     witness = next((p for p in state.players if p.role == "witness"), None)
-    fs = next((p for p in state.players if p.role == "forensic_scientist"), None)
 
     # Solution chosen notification (to those who know solution).
     if state.solution is not None:
-        for p in [murderer, accomplice, fs]:
+        for p in [murderer, accomplice]:
             if p is None:
                 continue
             entries.append(
@@ -107,32 +106,51 @@ def _mailbox_entries_for_murder_picked(*, state: GameState) -> list[tuple[str, d
 
 
 def _mailbox_entries_for_fs_scene_prompt(*, state: GameState) -> list[tuple[str, dict[str, str]]]:
-    """Prompt the Forensic Scientist to pick the public Location + Cause of Death tiles."""
+    """Prompt the Forensic Scientist to pick the public Location + Cause of Death tiles.
+
+    This prompt includes the chosen solution (clue/means IDs) when available so the FS decision is
+    explicitly conditioned on the murderer's selection.
+    """
 
     gid = str(state.game_id)
     fs = next((p for p in state.players if p.role == "forensic_scientist"), None)
     if fs is None:
         return []
 
-    from app.game_store import _cause_ids_from_assets, _location_ids_from_assets
+    from app.assets.singleton import get_assets
 
-    location_ids = _location_ids_from_assets()
-    cause_ids = _cause_ids_from_assets()
+    assets = get_assets()
+    lcd = assets.location_and_cause_of_death_tiles
 
-    return [
-        (
-            Mailbox(game_id=gid, player_id=fs.player_id).key,
-            {
-                "type": "prompt_fs_scene_pick",
-                "game_id": gid,
-                "player_id": fs.player_id,
-                "phase": state.phase.value,
-                "location_ids": ",".join(location_ids),
-                "cause_ids": ",".join(cause_ids),
-                "ts": _now_iso(),
-            },
-        )
-    ]
+    # Restrict to the dealt tile cards.
+    location_tile = state.fs_location_tile
+    cause_tile = state.fs_cause_tile
+
+    location_ids: list[str] = []
+    if location_tile:
+        location_ids = [o.id for o in lcd.by_id.values() if o.tile == location_tile]
+
+    cause_ids: list[str] = []
+    if cause_tile:
+        cause_ids = [o.id for o in lcd.by_id.values() if o.tile == cause_tile]
+
+    payload: dict[str, str] = {
+        "type": "prompt_fs_scene_pick",
+        "game_id": gid,
+        "player_id": fs.player_id,
+        "phase": state.phase.value,
+        "location_tile": location_tile or "",
+        "cause_tile": cause_tile or "",
+        "location_ids": ",".join(sorted(location_ids)),
+        "cause_ids": ",".join(sorted(cause_ids)),
+        "ts": _now_iso(),
+    }
+
+    if state.solution is not None:
+        payload["clue_id"] = state.solution.clue_id
+        payload["means_id"] = state.solution.means_id
+
+    return [(Mailbox(game_id=gid, player_id=fs.player_id).key, payload)]
 
 
 def _mailbox_entries_for_fs_scene_picked(*, state: GameState) -> list[tuple[str, dict[str, str]]]:
@@ -148,6 +166,16 @@ def _mailbox_entries_for_fs_scene_picked(*, state: GameState) -> list[tuple[str,
         "ts": _now_iso(),
     }
     return [(Mailbox(game_id=gid, player_id=p.player_id).key, payload) for p in state.players]
+
+
+def enqueue_setup_prompts_on_create(*, state: GameState) -> list[tuple[str, dict[str, str]]]:
+    """Mailbox entries to kick off game setup right after creation."""
+
+    entries: list[tuple[str, dict[str, str]]] = []
+    entries.extend(_mailbox_entries_for_state_changed(state=state))
+    if state.phase == GamePhase.setup_awaiting_murder_pick:
+        entries.extend(_mailbox_entries_for_murder_prompt(state=state))
+    return entries
 
 
 def dispatch_action(*, r: redis.Redis, game_id: UUID, player_id: str, action: ActionName, payload: dict[str, Any]) -> ActionResult:
@@ -249,7 +277,8 @@ async def dispatch_action_async(
         did_fs_scene_pick = False
 
         if action == "murder":
-            if fsm.current_state != fsm.awaiting_murder_pick:
+            # Validate using the authoritative model phase (not the underlying state machine objects).
+            if state.phase != GamePhase.setup_awaiting_murder_pick:
                 raise ValueError("Game is not awaiting murder selection")
             from app.game_store import set_murder_solution
 
@@ -315,7 +344,9 @@ async def dispatch_action_async(
         entries: list[tuple[str, dict[str, str]]] = []
         # Always notify everyone that state changed.
         entries.extend(_mailbox_entries_for_state_changed(state=state))
-        # If we just completed the murder pick step, also send role-specific info and FS prompt.
+        # If we just completed the murder pick step:
+        #  1) notify witness/accomplice/murderer secrets
+        #  2) then prompt FS to choose scene given the selection
         if did_murder_pick:
             entries.extend(_mailbox_entries_for_murder_picked(state=state))
             entries.extend(_mailbox_entries_for_fs_scene_prompt(state=state))
