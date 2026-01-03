@@ -8,7 +8,7 @@ from app.assets.registry import load_game_assets
 
 
 def test_assets_load_and_lookup() -> None:
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parent
     assets = load_game_assets(root=root)
 
     # Tilesets (exact)
@@ -32,7 +32,7 @@ def test_assets_load_and_lookup() -> None:
 
 
 def test_deterministic_deal_with_seed() -> None:
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parent
     assets = load_game_assets(root=root)
 
     a1 = assets.deal_means_ids(n=5, seed=123)
