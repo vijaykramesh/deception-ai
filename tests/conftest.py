@@ -12,7 +12,15 @@ def _load_dotenv_for_tests() -> None:
 
     This makes OPENAI_BASE_URL / OPENAI_MODEL available to tests without needing
     to manually export them in your shell.
+
+    In CI, we *don't* auto-load `.env` by default, so integration tests that require
+    a live Ollama instance stay skipped unless explicitly opted-in.
     """
+
+    # Don't implicitly enable external integration tests in CI.
+    # Opt-in locally with: DECEPTION_AI_LOAD_DOTENV_FOR_TESTS=1
+    if os.environ.get("CI") and os.environ.get("DECEPTION_AI_LOAD_DOTENV_FOR_TESTS") != "1":
+        return
 
     env_path = Path(__file__).resolve().parents[1] / ".env"
     if env_path.exists():

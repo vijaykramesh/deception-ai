@@ -9,6 +9,16 @@ from app.game_store import get_game
 from app.streams import Mailbox
 
 
+# ---- LLM decision helper (kept separate so tests can monkeypatch it) ----
+
+# Import these at module import time to satisfy linting; tests can monkeypatch the function.
+from app.agents.factory import create_default_agent
+from app.agents.solution_picker import pick_solution_with_agent
+from app.contexts import make_base_player_context
+from app.core.context import PlayerContext, compose_context
+from app.roles import RoleName, make_role_context
+
+
 @dataclass(frozen=True, slots=True)
 class AgentRunnerConfig:
     # How long to block waiting for a mailbox message.
@@ -220,14 +230,6 @@ async def run_game_agents_once(*, r: redis.Redis, game_id: str, config: AgentRun
     # In other phases (discussion/completed), do nothing for now.
     return False
 
-
-# ---- LLM decision helper (kept separate so tests can monkeypatch it) ----
-
-from app.agents.factory import create_default_agent
-from app.agents.solution_picker import pick_solution_with_agent
-from app.contexts import make_base_player_context
-from app.core.context import PlayerContext, compose_context
-from app.roles import RoleName, make_role_context
 
 
 async def decide_and_pick_solution_via_llm(
