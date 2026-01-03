@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -21,6 +22,28 @@ class PlayerHand(BaseModel):
     clue_ids: list[str] = Field(default_factory=list)
 
 
+class DiscussionComment(BaseModel):
+    seq: int
+    player_id: str
+    created_at: datetime
+    comments: str
+
+
+class MurderPickRequest(BaseModel):
+    clue: str
+    means: str
+
+
+class DiscussRequest(BaseModel):
+    comments: str = Field(..., min_length=1, max_length=4000)
+
+
+class SolveRequest(BaseModel):
+    murderer: str
+    clue: str
+    means: str
+
+
 class PlayerState(BaseModel):
     player_id: str
     seat: int
@@ -35,6 +58,20 @@ class PlayerState(BaseModel):
     knows_solution: bool = False
     solution: Solution | None = None
 
+    # Investigators start with a badge; if they guess wrong they lose it.
+    has_badge: bool = True
+
+    # Witness-only secret: knows murderer/accomplice identity but not solution.
+    knows_identities: bool = False
+    known_murderer_id: str | None = None
+    known_accomplice_id: str | None = None
+
+
+class GamePhase(StrEnum):
+    setup_awaiting_murder_pick = "setup_awaiting_murder_pick"
+    discussion = "discussion"
+    completed = "completed"
+
 
 class GameState(BaseModel):
     game_id: UUID
@@ -47,6 +84,17 @@ class GameState(BaseModel):
     seed: int
 
     players: list[PlayerState]
+
+    phase: GamePhase = GamePhase.setup_awaiting_murder_pick
+
+    # Global hidden solution (server truth). Only some players get it copied into their player state.
+    solution: Solution | None = None
+
+    # When completed.
+    winning_investigator_id: str | None = None
+
+    # Discussion / chat log.
+    discussion: list[DiscussionComment] = Field(default_factory=list)
 
 
 class GameListResponse(BaseModel):

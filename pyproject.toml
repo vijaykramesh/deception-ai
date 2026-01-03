@@ -12,6 +12,7 @@ dependencies = [
   "redis>=5.0.0",
   # AG2 on PyPI is available as `autogen` (alias of `ag2`).
   "autogen[openai]==0.10.3",
+  "python-statemachine>=2.3.0",
 ]
 
 [project.optional-dependencies]

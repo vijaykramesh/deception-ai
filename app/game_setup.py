@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from app.agents.factory import create_default_agent
 from app.agents.solution_picker import SolutionPickError, pick_solution_with_agent
-from app.api.models import PlayerHand, PlayerState, Solution
+from app.api.models import GameState, PlayerHand, PlayerState, Solution
 from app.assets.registry import GameAssets
 from app.contexts import make_base_player_context
 from app.core.context import PlayerContext, compose_context
@@ -64,6 +64,48 @@ def build_initial_players(
     return players
 
 
+def _find_player(players: list[PlayerState], role: str) -> PlayerState | None:
+    return next((p for p in players if p.role == role), None)
+
+
+def apply_solution_and_secrets(*, state: GameState, solution: Solution) -> None:
+    """Apply the chosen solution to the game state.
+
+    - Stores the canonical solution at game level.
+    - Copies the solution into FS/murderer/accomplice prompts.
+    - Sets witness-only identity knowledge (murderer/accomplice ids) but DOES NOT give the witness the solution.
+    """
+
+    state.solution = solution
+
+    murderer = _find_player(state.players, RoleName.murderer.value)
+    accomplice = _find_player(state.players, RoleName.accomplice.value)
+
+    # Copy solution to specific roles.
+    for p in state.players:
+        if p.role in {
+            RoleName.forensic_scientist.value,
+            RoleName.murderer.value,
+            RoleName.accomplice.value,
+        }:
+            p.knows_solution = True
+            p.solution = solution
+        else:
+            p.knows_solution = False
+            p.solution = None
+
+    # Witness gets identities only.
+    for p in state.players:
+        if p.role == RoleName.witness.value:
+            p.knows_identities = True
+            p.known_murderer_id = murderer.player_id if murderer else None
+            p.known_accomplice_id = accomplice.player_id if accomplice else None
+        else:
+            p.knows_identities = False
+            p.known_murderer_id = None
+            p.known_accomplice_id = None
+
+
 async def choose_solution_from_murderer_via_llm(
     *,
     players: list[PlayerState],
@@ -100,7 +142,7 @@ async def choose_solution_from_murderer_via_llm(
         return Solution(means_id=rng.choice(means_ids), clue_id=rng.choice(clue_ids))
 
 
-async def deal_hands_and_solution(
+async def deal_hands(
     *,
     assets: GameAssets,
     players: list[PlayerState],
@@ -108,8 +150,6 @@ async def deal_hands_and_solution(
     hand_size: int = 4,
 ) -> None:
     """Deal 4 means + 4 clues to everyone except the forensic scientist.
-
-    Also choose a hidden solution pair from the Murderer's dealt cards.
 
     Mutates `players` in place.
     """
@@ -127,29 +167,43 @@ async def deal_hands_and_solution(
         del deck[:n]
         return out
 
-    # Deal.
     for p in players:
+        # Default per-role flags.
+        p.knows_solution = False
+        p.solution = None
+        p.knows_identities = False
+        p.known_murderer_id = None
+        p.known_accomplice_id = None
+        if p.role == RoleName.investigator.value:
+            p.has_badge = True
+
         if p.role == RoleName.forensic_scientist.value:
             p.hand = PlayerHand(means_ids=[], clue_ids=[])
             continue
         p.hand = PlayerHand(means_ids=pop_n(means_deck, hand_size), clue_ids=pop_n(clue_deck, hand_size))
 
-    # Choose solution from murderer's hand via LLM (fallback to RNG).
-    solution = await choose_solution_from_murderer_via_llm(players=players, rng=rng)
 
-    # Attach solution only to FS, murderer, accomplice, witness.
-    for p in players:
-        if p.role in {
-            RoleName.forensic_scientist.value,
-            RoleName.murderer.value,
-            RoleName.accomplice.value,
-            RoleName.witness.value,
-        }:
-            p.knows_solution = True
-            p.solution = solution
-        else:
-            p.knows_solution = False
-            p.solution = None
+# Back-compat wrapper used by older code paths/tests.
+async def deal_hands_and_solution(
+    *,
+    assets: GameAssets,
+    players: list[PlayerState],
+    rng: random.Random,
+    hand_size: int = 4,
+) -> None:
+    await deal_hands(assets=assets, players=players, rng=rng, hand_size=hand_size)
+    # Old behavior: choose solution immediately.
+    solution = await choose_solution_from_murderer_via_llm(players=players, rng=rng)
+    dummy_state = GameState(
+        game_id=__import__("uuid").UUID(int=0),
+        num_ai_players=0,
+        num_human_players=0,
+        created_at=_now(),
+        last_updated_at=_now(),
+        seed=0,
+        players=players,
+    )
+    apply_solution_and_secrets(state=dummy_state, solution=solution)
 
 
 def describe_eyes_closed_sequence(*, has_witness: bool) -> list[str]:
