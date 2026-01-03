@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 import redis
 from typing import Any
 
@@ -18,8 +18,25 @@ from app.game_store import (
     set_murder_solution,
     submit_solution_guess,
 )
+from app.websocket_hub import hub
 
 router = APIRouter()
+
+
+@router.websocket("/ws/game/{game_id}")
+async def game_updates_ws(websocket: WebSocket, game_id: UUID) -> None:
+    gid = str(game_id)
+    await hub.connect(gid, websocket)
+
+    try:
+        # Keep the socket open; client can optionally send pings.
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        await hub.disconnect(gid, websocket)
+    except Exception:
+        await hub.disconnect(gid, websocket)
+        raise
 
 
 @router.get("/healthcheck")
@@ -38,6 +55,7 @@ async def create_game_route(payload: GameCreateRequest, r: redis.Redis = Depends
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
 
+    await hub.broadcast(str(state.game_id), {"type": "game_updated", "game_id": str(state.game_id)})
     return state
 
 
@@ -62,9 +80,12 @@ async def murder_pick_route(
     r: redis.Redis = Depends(get_redis),
 ) -> GameState:
     try:
-        return await set_murder_solution(r=r, game_id=game_id, player_id=player_id, clue_id=payload.clue, means_id=payload.means)
+        state = await set_murder_solution(r=r, game_id=game_id, player_id=player_id, clue_id=payload.clue, means_id=payload.means)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
+
+    await hub.broadcast(str(game_id), {"type": "game_updated", "game_id": str(game_id)})
+    return state
 
 
 @router.post("/game/{game_id}/player/{player_id}/discuss", response_model=GameState)
@@ -75,9 +96,12 @@ async def discuss_route(
     r: redis.Redis = Depends(get_redis),
 ) -> GameState:
     try:
-        return add_discussion_comment(r=r, game_id=game_id, player_id=player_id, comments=payload.comments)
+        state = add_discussion_comment(r=r, game_id=game_id, player_id=player_id, comments=payload.comments)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
+
+    await hub.broadcast(str(game_id), {"type": "game_updated", "game_id": str(game_id)})
+    return state
 
 
 @router.post("/game/{game_id}/player/{player_id}/solve", response_model=GameState)
@@ -88,7 +112,7 @@ async def solve_route(
     r: redis.Redis = Depends(get_redis),
 ) -> GameState:
     try:
-        return submit_solution_guess(
+        state = submit_solution_guess(
             r=r,
             game_id=game_id,
             player_id=player_id,
@@ -98,6 +122,9 @@ async def solve_route(
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
+
+    await hub.broadcast(str(game_id), {"type": "game_updated", "game_id": str(game_id)})
+    return state
 
 
 @router.post("/games/{game_id}/actions/{action}", response_model=GameState)
@@ -115,9 +142,12 @@ async def generic_action_route(
         if not pid:
             raise ValueError("player_id is required")
         result = await dispatch_action_async(r=r, game_id=game_id, player_id=str(pid), action=act, payload=body)
-        return result.state
+        state = result.state
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
+
+    await hub.broadcast(str(game_id), {"type": "game_updated", "game_id": str(game_id)})
+    return state
 
 
 @router.get("/games/{game_id}/players/{player_id}/mailbox")
@@ -169,4 +199,8 @@ async def run_agents_once_route(
         game_id=str(game_id),
         config=AgentRunnerConfig(block_ms=block_ms, count=count),
     )
+
+    if handled:
+        await hub.broadcast(str(game_id), {"type": "game_updated", "game_id": str(game_id)})
+
     return {"game_id": str(game_id), "handled": handled}

@@ -50,6 +50,9 @@ class PlayerState(BaseModel):
     is_ai: bool
     role: str
 
+    # Human-friendly name for UI.
+    display_name: str | None = None
+
     # Cards are face-up for everyone except the owning player (game UI rule);
     # we still store them here for state queries.
     hand: PlayerHand = Field(default_factory=PlayerHand)

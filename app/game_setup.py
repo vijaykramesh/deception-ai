@@ -45,6 +45,55 @@ def assign_roles(*, total_players: int, rng: random.Random) -> list[str]:
     return roles
 
 
+def _random_ai_name(*, rng: random.Random, taken: set[str]) -> str:
+    adjectives = [
+        "Curious",
+        "Calm",
+        "Bold",
+        "Clever",
+        "Witty",
+        "Swift",
+        "Quiet",
+        "Keen",
+        "Brave",
+        "Nimble",
+        "Radiant",
+        "Candid",
+        "Sly",
+        "Patient",
+    ]
+    nouns = [
+        "Fox",
+        "Raven",
+        "Otter",
+        "Lynx",
+        "Hawk",
+        "Badger",
+        "Mantis",
+        "Falcon",
+        "Panther",
+        "Cobra",
+        "Orchid",
+        "Juniper",
+        "Comet",
+        "Quartz",
+    ]
+
+    for _ in range(200):
+        name = f"{rng.choice(adjectives)} {rng.choice(nouns)}"
+        if name not in taken:
+            taken.add(name)
+            return name
+
+    # Extremely unlikely fallback.
+    idx = 1
+    while f"AI {idx}" in taken:
+        idx += 1
+    fallback = f"AI {idx}"
+    taken.add(fallback)
+    return fallback
+
+
 def build_initial_players(
     *,
     num_ai_players: int,
@@ -54,14 +103,27 @@ def build_initial_players(
     total = num_ai_players + num_human_players
     roles = assign_roles(total_players=total, rng=rng)
 
-    players: list[PlayerState] = []
-    # Seats are 0..total-1. First num_human as humans, rest AI.
+    # Build player shells in seat order.
+    base: list[PlayerState] = []
     for seat in range(total):
         is_ai = seat >= num_human_players
         pid = f"p{seat+1}"
-        players.append(PlayerState(player_id=pid, seat=seat, is_ai=is_ai, role=roles[seat]))
+        base.append(PlayerState(player_id=pid, seat=seat, is_ai=is_ai, role=""))
 
-    return players
+    # Shuffle the player list BEFORE assigning roles.
+    rng.shuffle(base)
+
+    taken_names: set[str] = set()
+    for idx, p in enumerate(base):
+        p.role = roles[idx]
+        if p.is_ai:
+            p.display_name = _random_ai_name(rng=rng, taken=taken_names)
+        else:
+            p.display_name = p.player_id
+
+    # Keep state.players ordered by seat so "clockwise" / UI layout is stable.
+    base.sort(key=lambda p: p.seat)
+    return base
 
 
 def _find_player(players: list[PlayerState], role: str) -> PlayerState | None:

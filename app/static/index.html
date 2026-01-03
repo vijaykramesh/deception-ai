@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>deception-ai UI</title>
+    <style>
+      :root {
+        --bg: #0b0f17;
+        --panel: #121a2a;
+        --panel2: #0f1523;
+        --text: #e7eefc;
+        --muted: #91a4c6;
+        --border: #25304a;
+        --accent: #7aa2ff;
+        --danger: #ff6b6b;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      }
+
+      input,
+      button,
+      textarea,
+      select {
+        font: inherit;
+        background: var(--panel2);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+      }
+      button {
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: transparent;
+        color: #071026;
+        font-weight: 600;
+      }
+
+      .wrap {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .error {
+        color: var(--danger);
+      }
+      .title {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .title h1 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .title small {
+        color: var(--muted);
+      }
+
+      /* Table (square border) */
+      .tableWrap {
+        position: relative;
+        height: 1080px;
+      }
+
+      .table {
+        position: relative;
+        height: 1280px;
+        border-radius: 16px;
+        border: 1px solid rgba(37, 48, 74, 0.55);
+        background: radial-gradient(ellipse at center, rgba(122, 162, 255, 0.06), rgba(0, 0, 0, 0) 62%);
+        overflow: hidden;
+
+        /* spacing around the center panel */
+        --gap: 14px;
+        --seat-w: 240px;
+        --seat-fs-w: 280px;
+
+        /* center panel size */
+        --center-w: 640px;
+        --center-h: 620px;
+      }
+
+      /* Base edge positioning (was missing, causing everything to stack) */
+      .edge {
+        position: absolute;
+        z-index: 2;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none; /* seats still clickable? we'll re-enable on seat */
+      }
+      .edge .seat {
+        pointer-events: auto;
+      }
+
+      .edge.top {
+        left: 12px;
+        right: 12px;
+        top: 10px;
+      }
+      .edge.bottom {
+        left: 12px;
+        right: 12px;
+        bottom: 10px;
+      }
+      .edge.left {
+        left: 10px;
+        top: 10px;
+        bottom: 10px;
+        flex-direction: column;
+      }
+      .edge.right {
+        right: 10px;
+        top: 10px;
+        bottom: 10px;
+        flex-direction: column;
+      }
+
+      /* Slot containers (8 positions around the center) */
+      .slot {
+        position: absolute;
+        z-index: 2;
+        width: var(--seat-w);
+      }
+      .slot.fs {
+        width: var(--seat-fs-w);
+      }
+
+      /* Center panel centered for desktop */
+      .center {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: var(--center-w);
+        max-width: calc(100% - 2 * (var(--seat-w) + 30px));
+        z-index: 3;
+      }
+
+      /* Compute slot positions from center geometry */
+      .slot.bottomMid {
+        left: 50%;
+        top: calc(50% + (var(--center-h) / 2) + var(--gap));
+        transform: translateX(-50%);
+      }
+      .slot.bottomLeft {
+        left: calc(50% - (var(--center-w) / 2) - var(--gap) - var(--seat-w));
+        top: calc(50% + (var(--center-h) / 2) + var(--gap));
+      }
+      .slot.midLeft {
+        left: calc(50% - (var(--center-w) / 2) - var(--gap) - var(--seat-w));
+        top: 50%;
+        transform: translateY(-50%);
+      }
+      .slot.topLeft {
+        left: calc(50% - (var(--center-w) / 2) - var(--gap) - var(--seat-w));
+        top: calc(50% - (var(--center-h) / 2) - var(--gap) - 240px);
+      }
+      .slot.midTop {
+        left: 50%;
+        top: calc(50% - (var(--center-h) / 2) - var(--gap) - 240px);
+        transform: translateX(-50%);
+      }
+      .slot.topRight {
+        left: calc(50% + (var(--center-w) / 2) + var(--gap));
+        top: calc(50% - (var(--center-h) / 2) - var(--gap) - 240px);
+      }
+      .slot.midRight {
+        left: calc(50% + (var(--center-w) / 2) + var(--gap));
+        top: 50%;
+        transform: translateY(-50%);
+      }
+      .slot.bottomRight {
+        left: calc(50% + (var(--center-w) / 2) + var(--gap));
+        top: calc(50% + (var(--center-h) / 2) + var(--gap));
+      }
+
+      .seat {
+        width: var(--seat-w);
+      }
+      .seat.fs {
+        width: var(--seat-fs-w);
+      }
+
+      /* Mobile: stack */
+      @media (max-width: 980px) {
+        .tableWrap {
+          height: auto;
+        }
+        .table {
+          height: auto;
+          background: transparent;
+          border: none;
+          overflow: visible;
+        }
+        .edge,
+        .slot {
+          position: static;
+          width: auto;
+          transform: none;
+          display: block;
+        }
+        .center {
+          position: static;
+          transform: none;
+          width: auto;
+          max-width: none;
+          margin: 12px 0;
+        }
+        .seat {
+          width: auto;
+        }
+      }
+
+      .player {
+        margin-bottom: 12px;
+      }
+      .player header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+      .pill {
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(122, 162, 255, 0.15);
+        border: 1px solid rgba(122, 162, 255, 0.3);
+        color: var(--accent);
+        white-space: nowrap;
+      }
+      .hand {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+      .hand .line {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .tag {
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(145, 164, 198, 0.10);
+        border: 1px solid rgba(145, 164, 198, 0.25);
+        color: var(--text);
+      }
+      .tag[data-id] {
+        cursor: help;
+      }
+
+      .discussion {
+        min-height: 560px;
+        display: flex;
+        flex-direction: column;
+      }
+      .log {
+        flex: 1;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px;
+        background: rgba(0, 0, 0, 0.15);
+      }
+      .msg {
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(37, 48, 74, 0.6);
+      }
+      .msg:last-child {
+        border-bottom: 0;
+      }
+      .msg .meta {
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .composer {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .composer textarea {
+        flex: 1;
+        min-height: 60px;
+        resize: vertical;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap" id="app"></div>
+
+    <script>
+      const app = document.getElementById('app');
+
+      const API_BASE = (() => window.__API_BASE__ || '')();
+
+      function qs(sel) {
+        return document.querySelector(sel);
+      }
+
+      function el(tag, attrs = {}, children = []) {
+        const node = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs)) {
+          if (k === 'class') node.className = v;
+          else if (k === 'text') node.textContent = v;
+          else if (k === 'html') node.innerHTML = v;
+          else if (k === 'style') node.setAttribute('style', v);
+          else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2).toLowerCase(), v);
+          else if (v !== undefined && v !== null) node.setAttribute(k, v);
+        }
+        for (const c of children) node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+        return node;
+      }
+
+      async function api(path, opts = {}) {
+        const res = await fetch(API_BASE + path, {
+          headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+          ...opts,
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || ('HTTP ' + res.status));
+        }
+        return res.json();
+      }
+
+      function formatRole(role) {
+        return role.replaceAll('_', ' ');
+      }
+
+      function route() {
+        const h = window.location.hash || '#/';
+        const parts = h.replace('#', '').split('/').filter(Boolean);
+        if (parts.length === 0) return { name: 'home' };
+        if (parts[0] === 'game' && parts[1]) return { name: 'game', gameId: parts[1] };
+        return { name: 'home' };
+      }
+
+      function navigate(hash) {
+        window.location.hash = hash;
+      }
+
+      function renderHome() {
+        app.innerHTML = '';
+
+        const join = el('div', { class: 'card' }, [
+          el('div', { class: 'title' }, [
+            el('h1', { text: 'deception-ai' }),
+            el('small', { class: 'muted', text: 'Minimal local UI (websocket updates)' }),
+          ]),
+          el('p', { class: 'muted', text: 'Join an existing game by ID, or create a new one.' }),
+        ]);
+
+        const joinRow = el('div', { class: 'row' }, [
+          el('input', { id: 'joinGameId', placeholder: 'game id (UUID)', style: 'min-width: 340px' }),
+          el('button', {
+            class: 'primary',
+            text: 'Join',
+            onclick: () => {
+              const id = qs('#joinGameId').value.trim();
+              if (!id) return;
+              navigate(`#/game/${id}`);
+            },
+          }),
+        ]);
+
+        const createCard = el('div', { class: 'card', style: 'margin-top: 12px' }, [
+          el('div', { class: 'title' }, [
+            el('h1', { text: 'Create new game' }),
+            el('small', { class: 'muted', text: '4–12 total players supported by rules' }),
+          ]),
+          el('div', { class: 'row', style: 'margin-top: 10px' }, [
+            el('label', { class: 'muted', text: 'AI players' }),
+            el('input', { id: 'numAi', type: 'number', min: '0', max: '12', value: '4', style: 'width: 90px' }),
+            el('label', { class: 'muted', text: 'Human players' }),
+            el('input', { id: 'numHuman', type: 'number', min: '0', max: '12', value: '0', style: 'width: 90px' }),
+            el('button', {
+              class: 'primary',
+              text: 'Create',
+              onclick: async () => {
+                const num_ai_players = parseInt(qs('#numAi').value, 10);
+                const num_human_players = parseInt(qs('#numHuman').value, 10);
+                const err = qs('#homeErr');
+                err.textContent = '';
+                try {
+                  const state = await api('/game', {
+                    method: 'POST',
+                    body: JSON.stringify({ num_ai_players, num_human_players }),
+                  });
+                  navigate(`#/game/${state.game_id}`);
+                } catch (e) {
+                  err.textContent = e.message;
+                }
+              },
+            }),
+          ]),
+          el('div', { id: 'homeErr', class: 'error', style: 'margin-top: 10px' }),
+        ]);
+
+        join.appendChild(joinRow);
+        app.appendChild(join);
+        app.appendChild(createCard);
+      }
+
+      async function loadCardNameMaps() {
+        const assetsRoot = '/ui-assets';
+        const [meansCsv, clueCsv] = await Promise.all([
+          fetch(assetsRoot + '/means_cards.csv').then((r) => r.text()),
+          fetch(assetsRoot + '/clue_cards.csv').then((r) => r.text()),
+        ]);
+
+        function parseCsv(text) {
+          const lines = text.split(/\r?\n/).filter((l) => l.trim().length);
+          const out = new Map();
+          for (let i = 1; i < lines.length; i++) {
+            const row = lines[i];
+            const idx = row.indexOf(',');
+            if (idx === -1) continue;
+            const id = row.slice(0, idx).trim();
+            let name = row.slice(idx + 1).trim();
+            if (name.startsWith('"') && name.endsWith('"')) name = name.slice(1, -1);
+            if (id) out.set(id, name || id);
+          }
+          return out;
+        }
+
+        return {
+          means: parseCsv(meansCsv),
+          clues: parseCsv(clueCsv),
+        };
+      }
+
+      function renderPlayer(p, cardNames) {
+        const roleText = formatRole(p.role);
+        const display = p.display_name || p.player_id;
+        const header = el('header', {}, [
+          el('div', {}, [
+            el('div', { text: display, style: 'font-weight: 600' }),
+            el('div', { class: 'muted', text: `${p.player_id} · ${roleText}` }),
+          ]),
+          el('span', { class: 'pill', text: p.is_ai ? 'AI' : 'Human' }),
+        ]);
+
+        const means = el('div', { class: 'line' }, [el('span', { class: 'muted', text: 'Means:' })]);
+        for (const id of (p.hand?.means_ids || [])) {
+          const name = cardNames?.means?.get(id) || id;
+          means.appendChild(el('span', { class: 'tag', 'data-id': id, title: id, text: name }));
+        }
+
+        const clues = el('div', { class: 'line' }, [el('span', { class: 'muted', text: 'Clues:' })]);
+        for (const id of (p.hand?.clue_ids || [])) {
+          const name = cardNames?.clues?.get(id) || id;
+          clues.appendChild(el('span', { class: 'tag', 'data-id': id, title: id, text: name }));
+        }
+
+        return el('div', { class: 'card player' }, [header, el('div', { class: 'hand' }, [means, clues])]);
+      }
+
+      function renderDiscussion(state, playerId) {
+        const log = el('div', { class: 'log', id: 'log' });
+        for (const m of state.discussion || []) {
+          const meta = el('div', { class: 'meta' }, [
+            el('span', { text: m.player_id }),
+            el('span', { text: new Date(m.created_at).toLocaleString() }),
+          ]);
+          log.appendChild(el('div', { class: 'msg' }, [meta, el('div', { text: m.comments })]));
+        }
+
+        const textarea = el('textarea', { id: 'commentBox', placeholder: 'Say something to the table…' });
+        const sendBtn = el('button', {
+          class: 'primary',
+          text: 'Send',
+          onclick: async () => {
+            const text = textarea.value.trim();
+            if (!text) return;
+            const err = qs('#gameErr');
+            err.textContent = '';
+            try {
+              await api(`/game/${state.game_id}/player/${encodeURIComponent(playerId)}/discuss`, {
+                method: 'POST',
+                body: JSON.stringify({ comments: text }),
+              });
+              textarea.value = '';
+            } catch (e) {
+              err.textContent = e.message;
+            }
+          },
+        });
+
+        return el('div', { class: 'card discussion' }, [
+          el('div', { class: 'title' }, [
+            el('h1', { text: 'Discussion' }),
+            el('small', { class: 'muted', text: `phase: ${state.phase}` }),
+          ]),
+          log,
+          el('div', { class: 'composer' }, [textarea, sendBtn]),
+        ]);
+      }
+
+      function layoutSeatsSquare(state, rootEl, cardNames) {
+        rootEl.innerHTML = '';
+
+        const players = (state.players || []).slice().sort((a, b) => a.seat - b.seat);
+        const fs = players.find((p) => p.role === 'forensic_scientist');
+        const others = players.filter((p) => p !== fs);
+
+        const center = el('div', { class: 'center', id: 'centerCol' });
+        rootEl.appendChild(center);
+
+        const isStacked = window.matchMedia('(max-width: 980px)').matches;
+        if (isStacked) {
+          for (const p of others) rootEl.appendChild(el('div', { class: 'seat' }, [renderPlayer(p, cardNames)]));
+          if (fs) rootEl.appendChild(el('div', { class: 'seat fs' }, [renderPlayer(fs, cardNames)]));
+          return;
+        }
+
+        // Clockwise slots, starting at the bottom with FS, then clockwise.
+        const slots = [
+          { className: 'slot fs bottomMid', player: fs },
+          { className: 'slot bottomLeft', player: null },
+          { className: 'slot midLeft', player: null },
+          { className: 'slot topLeft', player: null },
+          { className: 'slot midTop', player: null },
+          { className: 'slot topRight', player: null },
+          { className: 'slot midRight', player: null },
+          { className: 'slot bottomRight', player: null },
+        ];
+
+        const ringSlots = slots.slice(1);
+        for (let i = 0; i < others.length; i++) {
+          ringSlots[i % ringSlots.length].player = others[i];
+        }
+
+        for (const s of slots) {
+          if (!s.player) continue;
+          rootEl.appendChild(el('div', { class: s.className }, [renderPlayer(s.player, cardNames)]));
+        }
+      }
+
+      async function renderGame(gameId) {
+        app.innerHTML = '';
+
+        const top = el('div', { class: 'row', style: 'margin-bottom: 12px' }, [
+          el('button', { text: '← Home', onclick: () => navigate('#/') }),
+          el('div', { class: 'muted', text: 'Game:' }),
+          el('div', { style: 'font-weight: 600', text: gameId }),
+          el('div', { style: 'flex: 1' }),
+          el('button', {
+            text: 'Run AI agents once',
+            onclick: async () => {
+              const err = qs('#gameErr');
+              err.textContent = '';
+              try {
+                await api(`/games/${gameId}/agents/run_once?block_ms=10&count=10`, { method: 'POST' });
+              } catch (e) {
+                err.textContent = e.message;
+              }
+            },
+          }),
+        ]);
+
+        const controls = el('div', { class: 'card', style: 'margin-bottom: 12px' }, [
+          el('div', { class: 'title' }, [
+            el('h1', { text: 'View settings' }),
+            el('small', { class: 'muted', text: 'Forensic Scientist POV (public cards shown)' }),
+          ]),
+          el('div', { class: 'row', style: 'margin-top: 10px' }, [
+            el('label', { class: 'muted', text: 'Post as player_id' }),
+            el('input', { id: 'postAs', placeholder: 'e.g. p1', style: 'min-width: 160px' }),
+            el('span', { class: 'muted', text: '(must match a player_id in state)' }),
+          ]),
+          el('div', { id: 'gameErr', class: 'error', style: 'margin-top: 10px' }),
+        ]);
+
+        const board = el('div', { class: 'tableWrap' }, [el('div', { class: 'table', id: 'tableRoot' })]);
+
+        app.appendChild(top);
+        app.appendChild(controls);
+        app.appendChild(board);
+
+        let state;
+        try {
+          state = await api(`/game/${gameId}`);
+        } catch (e) {
+          app.appendChild(el('div', { class: 'card error', text: e.message }));
+          return;
+        }
+
+        let cardNames = null;
+        try {
+          cardNames = await loadCardNameMaps();
+        } catch (e) {
+          console.warn('Failed to load card name maps', e);
+        }
+
+        const fsDefault =
+          state.players.find((p) => p.role === 'forensic_scientist')?.player_id || state.players[0]?.player_id || 'p1';
+        qs('#postAs').value = fsDefault;
+
+        const tableRoot = qs('#tableRoot');
+
+        function rerender(newState) {
+          state = newState;
+          layoutSeatsSquare(state, tableRoot, cardNames);
+
+          const center = qs('#centerCol');
+          const playerId = qs('#postAs').value.trim() || fsDefault;
+          center.innerHTML = '';
+          center.appendChild(renderDiscussion(state, playerId));
+
+          const log = qs('#log');
+          if (log) log.scrollTop = log.scrollHeight;
+        }
+
+        rerender(state);
+
+        // Re-layout on resize.
+        let resizeTimer = null;
+        window.addEventListener('resize', () => {
+          if (resizeTimer) clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(() => rerender(state), 50);
+        });
+
+        // Live updates via websocket.
+        const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const wsUrl = `${wsProto}://${window.location.host}/ws/game/${gameId}`;
+        let ws;
+        try {
+          ws = new WebSocket(wsUrl);
+        } catch (e) {
+          console.warn('WebSocket failed to construct:', e);
+        }
+
+        let pollTimer = null;
+        function startPollingFallback() {
+          if (pollTimer) return;
+          pollTimer = setInterval(async () => {
+            try {
+              const s = await api(`/game/${gameId}`);
+              rerender(s);
+            } catch (_) {}
+          }, 1500);
+        }
+
+        if (ws) {
+          ws.onopen = () => {
+            setInterval(() => {
+              if (ws.readyState === 1) ws.send('ping');
+            }, 20000);
+          };
+          ws.onmessage = async (evt) => {
+            try {
+              const msg = JSON.parse(evt.data);
+              if (msg.type === 'game_updated') {
+                const s = await api(`/game/${gameId}`);
+                rerender(s);
+              }
+            } catch (e) {
+              console.warn('ws message parse failed', e);
+            }
+          };
+          ws.onerror = () => startPollingFallback();
+          ws.onclose = () => startPollingFallback();
+          setTimeout(() => {
+            if (ws.readyState !== 1) startPollingFallback();
+          }, 1200);
+        } else {
+          startPollingFallback();
+        }
+      }
+
+      async function render() {
+        const r = route();
+        if (r.name === 'home') return renderHome();
+        if (r.name === 'game') return renderGame(r.gameId);
+      }
+
+      window.addEventListener('hashchange', render);
+      render();
+    </script>
+  </body>
+</html>
+
