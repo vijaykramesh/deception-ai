@@ -23,6 +23,8 @@ dev = [
   "pytest-asyncio>=0.24.0",
   "httpx>=0.28.0",
   "fakeredis>=2.25.0",
+  "pytest-cov>=4.1.0",
+  "pandas>=2.3.3",
 ]
 
 [tool.ruff]
@@ -46,3 +48,29 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = ["-q"]
 asyncio_mode = "auto"
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+# If you later add other top-level packages, include them here.
+
+[tool.coverage.report]
+skip_covered = false
+show_missing = true
+exclude_lines = [
+  "pragma: no cover",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+]
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.paths]
+source = [
+  "app",
+  ".venv/*/site-packages/app",
+]

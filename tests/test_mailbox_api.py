@@ -1,20 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from pathlib import Path
 
 import fakeredis
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_redis
-from app.assets.singleton import init_assets
 from app.main import app
-
-
-@pytest.fixture(autouse=True, scope="session")
-def _init_assets_for_tests() -> None:
-    init_assets(project_root=Path(__file__).resolve().parents[1])
 
 
 @pytest.fixture()
@@ -50,4 +43,3 @@ def test_mailbox_endpoint_returns_messages(client: TestClient) -> None:
 
     assert data["stream"].startswith(f"mailbox:{state['game_id']}")
     assert any(m["fields"].get("type") == "prompt_murder_pick" for m in data["messages"])
-

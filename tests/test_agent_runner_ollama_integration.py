@@ -6,7 +6,6 @@ import pytest
 
 from app.agent_runner import AgentRunnerConfig, run_game_agents_once
 from app.api.models import GamePhase
-from app.assets.singleton import init_assets
 from app.game_store import create_game, get_game
 
 
@@ -33,8 +32,6 @@ async def test_agent_runner_ollama_env_gated() -> None:
         pytest.skip("Missing OPENAI_BASE_URL/OPENAI_MODEL")
 
     import redis
-
-    init_assets(project_root=__import__("pathlib").Path(__file__).resolve().parents[1])
 
     r = redis.Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True)
 

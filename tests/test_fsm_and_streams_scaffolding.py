@@ -1,33 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Generator
-from pathlib import Path
-
 import fakeredis
-import pytest
 from fastapi.testclient import TestClient
-
-from app.api.deps import get_redis
-from app.assets.singleton import init_assets
-from app.main import app
-
-
-@pytest.fixture(autouse=True, scope="session")
-def _init_assets_for_tests() -> None:
-    init_assets(project_root=Path(__file__).resolve().parents[1])
-
-
-@pytest.fixture()
-def client_and_redis() -> Generator[tuple[TestClient, fakeredis.FakeRedis], None, None]:
-    r = fakeredis.FakeRedis(decode_responses=True)
-
-    def _override() -> Generator[fakeredis.FakeRedis, None, None]:
-        yield r
-
-    app.dependency_overrides[get_redis] = _override
-    with TestClient(app) as c:
-        yield c, r
-    app.dependency_overrides.clear()
 
 
 def _find_player(data: dict, role: str) -> dict:

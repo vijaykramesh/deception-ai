@@ -1,0 +1,139 @@
+id,Tile,Option
+motive-of-crime__option-0001,Motive of Crime,Option-0001
+motive-of-crime__option-0002,Motive of Crime,Option-0002
+motive-of-crime__option-0003,Motive of Crime,Option-0003
+motive-of-crime__option-0004,Motive of Crime,Option-0004
+motive-of-crime__option-0005,Motive of Crime,Option-0005
+motive-of-crime__option-0006,Motive of Crime,Option-0006
+weather__option-0007,Weather,Option-0007
+weather__option-0008,Weather,Option-0008
+weather__option-0009,Weather,Option-0009
+weather__option-0010,Weather,Option-0010
+weather__option-0011,Weather,Option-0011
+weather__option-0012,Weather,Option-0012
+hint-on-corpse__option-0013,Hint on Corpse,Option-0013
+hint-on-corpse__option-0014,Hint on Corpse,Option-0014
+hint-on-corpse__option-0015,Hint on Corpse,Option-0015
+hint-on-corpse__option-0016,Hint on Corpse,Option-0016
+hint-on-corpse__option-0017,Hint on Corpse,Option-0017
+hint-on-corpse__option-0018,Hint on Corpse,Option-0018
+general-impression__option-0019,General Impression,Option-0019
+general-impression__option-0020,General Impression,Option-0020
+general-impression__option-0021,General Impression,Option-0021
+general-impression__option-0022,General Impression,Option-0022
+general-impression__option-0023,General Impression,Option-0023
+general-impression__option-0024,General Impression,Option-0024
+corpse-condition__option-0025,Corpse Condition,Option-0025
+corpse-condition__option-0026,Corpse Condition,Option-0026
+corpse-condition__decayed,Corpse Condition,Decayed
+corpse-condition__option-0028,Corpse Condition,Option-0028
+corpse-condition__option-0029,Corpse Condition,Option-0029
+corpse-condition__option-0030,Corpse Condition,Option-0030
+victim-s-identity__option-0031,Victim's Identity,Option-0031
+victim-s-identity__option-0032,Victim's Identity,Option-0032
+victim-s-identity__option-0033,Victim's Identity,Option-0033
+victim-s-identity__option-0034,Victim's Identity,Option-0034
+victim-s-identity__option-0035,Victim's Identity,Option-0035
+victim-s-identity__option-0036,Victim's Identity,Option-0036
+murderer-s-personality__option-0037,Murderer's Personality,Option-0037
+murderer-s-personality__option-0038,Murderer's Personality,Option-0038
+murderer-s-personality__option-0039,Murderer's Personality,Option-0039
+murderer-s-personality__option-0040,Murderer's Personality,Option-0040
+murderer-s-personality__option-0041,Murderer's Personality,Option-0041
+murderer-s-personality__option-0042,Murderer's Personality,Option-0042
+state-of-the-scene__option-0043,State of The Scene,Option-0043
+state-of-the-scene__option-0044,State of The Scene,Option-0044
+state-of-the-scene__option-0045,State of The Scene,Option-0045
+state-of-the-scene__option-0046,State of The Scene,Option-0046
+state-of-the-scene__option-0047,State of The Scene,Option-0047
+state-of-the-scene__option-0048,State of The Scene,Option-0048
+victim-s-build__option-0049,Victim's Build,Option-0049
+victim-s-build__option-0050,Victim's Build,Option-0050
+victim-s-build__option-0051,Victim's Build,Option-0051
+victim-s-build__option-0052,Victim's Build,Option-0052
+victim-s-build__option-0053,Victim's Build,Option-0053
+victim-s-build__option-0054,Victim's Build,Option-0054
+victim-s-clothes__option-0055,Victim's Clothes,Option-0055
+victim-s-clothes__option-0056,Victim's Clothes,Option-0056
+victim-s-clothes__option-0057,Victim's Clothes,Option-0057
+victim-s-clothes__option-0058,Victim's Clothes,Option-0058
+victim-s-clothes__option-0059,Victim's Clothes,Option-0059
+victim-s-clothes__option-0060,Victim's Clothes,Option-0060
+evidence-left-behind__option-0061,Evidence Left Behind,Option-0061
+evidence-left-behind__option-0062,Evidence Left Behind,Option-0062
+evidence-left-behind__option-0063,Evidence Left Behind,Option-0063
+evidence-left-behind__option-0064,Evidence Left Behind,Option-0064
+evidence-left-behind__option-0065,Evidence Left Behind,Option-0065
+evidence-left-behind__option-0066,Evidence Left Behind,Option-0066
+victim-s-expression__option-0067,Victim's Expression,Option-0067
+victim-s-expression__option-0068,Victim's Expression,Option-0068
+victim-s-expression__option-0069,Victim's Expression,Option-0069
+victim-s-expression__option-0070,Victim's Expression,Option-0070
+victim-s-expression__option-0071,Victim's Expression,Option-0071
+victim-s-expression__option-0072,Victim's Expression,Option-0072
+social-relationship__option-0073,Social Relationship,Option-0073
+social-relationship__option-0074,Social Relationship,Option-0074
+social-relationship__option-0075,Social Relationship,Option-0075
+social-relationship__option-0076,Social Relationship,Option-0076
+social-relationship__option-0077,Social Relationship,Option-0077
+social-relationship__option-0078,Social Relationship,Option-0078
+victim-s-occupation__option-0079,Victim's Occupation,Option-0079
+victim-s-occupation__option-0080,Victim's Occupation,Option-0080
+victim-s-occupation__option-0081,Victim's Occupation,Option-0081
+victim-s-occupation__option-0082,Victim's Occupation,Option-0082
+victim-s-occupation__option-0083,Victim's Occupation,Option-0083
+victim-s-occupation__option-0084,Victim's Occupation,Option-0084
+in-progress__option-0085,In Progress,Option-0085
+in-progress__option-0086,In Progress,Option-0086
+in-progress__option-0087,In Progress,Option-0087
+in-progress__option-0088,In Progress,Option-0088
+in-progress__option-0089,In Progress,Option-0089
+in-progress__option-0090,In Progress,Option-0090
+sudden-incident__option-0091,Sudden Incident,Option-0091
+sudden-incident__option-0092,Sudden Incident,Option-0092
+sudden-incident__option-0093,Sudden Incident,Option-0093
+sudden-incident__option-0094,Sudden Incident,Option-0094
+sudden-incident__option-0095,Sudden Incident,Option-0095
+sudden-incident__option-0096,Sudden Incident,Option-0096
+time-of-death__option-0097,Time of Death,Option-0097
+time-of-death__option-0098,Time of Death,Option-0098
+time-of-death__option-0099,Time of Death,Option-0099
+time-of-death__option-0100,Time of Death,Option-0100
+time-of-death__option-0101,Time of Death,Option-0101
+time-of-death__option-0102,Time of Death,Option-0102
+duration-of-crime__option-0103,Duration of Crime,Option-0103
+duration-of-crime__option-0104,Duration of Crime,Option-0104
+duration-of-crime__option-0105,Duration of Crime,Option-0105
+duration-of-crime__option-0106,Duration of Crime,Option-0106
+duration-of-crime__option-0107,Duration of Crime,Option-0107
+duration-of-crime__option-0108,Duration of Crime,Option-0108
+trace-at-the-scene__option-0109,Trace at the Scene,Option-0109
+trace-at-the-scene__option-0110,Trace at the Scene,Option-0110
+trace-at-the-scene__option-0111,Trace at the Scene,Option-0111
+trace-at-the-scene__option-0112,Trace at the Scene,Option-0112
+trace-at-the-scene__option-0113,Trace at the Scene,Option-0113
+trace-at-the-scene__option-0114,Trace at the Scene,Option-0114
+noticed-by-bystander__option-0115,Noticed by Bystander,Option-0115
+noticed-by-bystander__option-0116,Noticed by Bystander,Option-0116
+noticed-by-bystander__option-0117,Noticed by Bystander,Option-0117
+noticed-by-bystander__option-0118,Noticed by Bystander,Option-0118
+noticed-by-bystander__option-0119,Noticed by Bystander,Option-0119
+noticed-by-bystander__option-0120,Noticed by Bystander,Option-0120
+day-of-crime__option-0121,Day of Crime,Option-0121
+day-of-crime__option-0122,Day of Crime,Option-0122
+day-of-crime__option-0123,Day of Crime,Option-0123
+day-of-crime__option-0124,Day of Crime,Option-0124
+day-of-crime__option-0125,Day of Crime,Option-0125
+day-of-crime__option-0126,Day of Crime,Option-0126
+cause-of-death__cause-0127,Cause of Death,Cause-0127
+cause-of-death__cause-0128,Cause of Death,Cause-0128
+cause-of-death__cause-0129,Cause of Death,Cause-0129
+cause-of-death__cause-0130,Cause of Death,Cause-0130
+cause-of-death__cause-0131,Cause of Death,Cause-0131
+cause-of-death__cause-0132,Cause of Death,Cause-0132
+countdown__option-0133,Countdown,Option-0133
+erroneous-information__option-0134,Erroneous Information,Option-0134
+a-good-twist__option-0135,A Good Twist,Option-0135
+a-useful-clue__option-0136,A Useful Clue,Option-0136
+ruled-out-evidence__option-0137,Ruled Out Evidence,Option-0137
+secret-testimony__option-0138,Secret Testimony,Option-0138

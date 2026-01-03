@@ -1,21 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from pathlib import Path
 
 import fakeredis
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_redis
-from app.assets.singleton import init_assets
 from app.main import app
 
-
-@pytest.fixture(autouse=True, scope="session")
-def _init_assets_for_tests() -> None:
-    # Ensure create_game can deal cards.
-    init_assets(project_root=Path(__file__).resolve().parents[1])
 
 
 @pytest.fixture(autouse=True)

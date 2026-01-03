@@ -25,6 +25,24 @@ def _load_dotenv_for_tests() -> None:
         os.environ["OPENAI_API_KEY"] = "ollama"
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _init_assets_from_test_fixtures() -> None:
+    """Initialize assets from `tests/assets` and forbid production asset loading.
+
+    This keeps tests hermetic and prevents coupling to the repo's real game assets.
+    """
+
+    os.environ["DECEPTION_AI_STRICT_ASSETS"] = "1"
+
+    from app.assets.singleton import init_assets, reset_assets_for_tests
+
+    reset_assets_for_tests()
+
+    # Point the asset loader at a fake project root: tests/ contains an assets/ dir.
+    test_root = Path(__file__).resolve().parent
+    init_assets(project_root=test_root)
+
+
 @pytest.fixture()
 def client_and_redis():
     """Shared fixture for tests that need both a FastAPI TestClient and fakeredis.
@@ -50,4 +68,3 @@ def client_and_redis():
     with TestClient(app) as c:
         yield c, r
     app.dependency_overrides.clear()
-
