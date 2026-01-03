@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import logging
 from typing import Any, Literal
 from uuid import UUID
 
@@ -12,6 +13,10 @@ from app.fsm import GameFSM
 from app.game_store import get_game, save_game
 from app.lock import game_lock
 from app.streams import Mailbox, publish_many
+from app.turn_processing.validators import ValidationContext, pipeline_for_action
+
+
+logger = logging.getLogger("deception.actions")
 
 
 ActionName = Literal["murder", "fs_scene", "discuss", "solve"]
@@ -178,6 +183,16 @@ def enqueue_setup_prompts_on_create(*, state: GameState) -> list[tuple[str, dict
     return entries
 
 
+def _log_action(event: str, **fields: object) -> None:
+    """Structured log helper for action processing.
+
+    We keep this small and JSON-friendly; callers should pass only primitives.
+    """
+
+    payload = {"event": event, **fields}
+    logger.info("action", extra={"action": payload})
+
+
 def dispatch_action(*, r: redis.Redis, game_id: UUID, player_id: str, action: ActionName, payload: dict[str, Any]) -> ActionResult:
     """Entry point for human UI + agent runner.
 
@@ -200,6 +215,8 @@ def dispatch_action(*, r: redis.Redis, game_id: UUID, player_id: str, action: Ac
         state = get_game(r=r, game_id=game_id)
         if state is None:
             raise ValueError("Game not found")
+
+        phase_before = state.phase.value
 
         fsm = GameFSM(state)
 
@@ -247,11 +264,35 @@ def dispatch_action(*, r: redis.Redis, game_id: UUID, player_id: str, action: Ac
         else:
             raise ValueError(f"Unknown action: {action}")
 
+        # Sync phase based on the FSM's perspective.
+        # Also enforce that the resulting phase is consistent with our phase vocabulary.
         fsm.sync_phase_to_model()
+
+        phase_after = state.phase.value
+
+        _log_action(
+            "action_applied",
+            game_id=gid_str,
+            player_id=player_id,
+            action=action,
+            phase_before=phase_before,
+            phase_after=phase_after,
+        )
+
         save_game(r=r, state=state)
 
         mailbox_entries = _mailbox_entries_for_state_changed(state=state)
         ids = publish_many(r=r, entries=mailbox_entries)
+
+        _log_action(
+            "action_finished",
+            game_id=gid_str,
+            player_id=player_id,
+            action=action,
+            phase_before=phase_before,
+            phase_after=phase_after,
+            mailbox_entries=len(ids),
+        )
 
         return ActionResult(state=state, mailbox_entry_ids=ids)
 
@@ -266,79 +307,145 @@ async def dispatch_action_async(
 ) -> ActionResult:
     gid_str = str(game_id)
 
+    # Snapshot minimal request metadata for consistent logging.
+    _log_action(
+        "action_received",
+        game_id=gid_str,
+        player_id=player_id,
+        action=action,
+    )
+
     with game_lock(r=r, game_id=gid_str):
         state = get_game(r=r, game_id=game_id)
         if state is None:
+            _log_action(
+                "action_denied",
+                game_id=gid_str,
+                player_id=player_id,
+                action=action,
+                reason="game_not_found",
+            )
             raise ValueError("Game not found")
+
+        phase_before = state.phase.value
+
+        # Validation pipeline (phase now; extensible later).
+        ctx = ValidationContext(game_id=gid_str, player_id=player_id, action=action)
+        try:
+            pipeline_for_action(action).validate(ctx=ctx, state=state)
+            _log_action(
+                "action_validated",
+                game_id=gid_str,
+                player_id=player_id,
+                action=action,
+                phase_before=phase_before,
+            )
+        except ValueError as e:
+            _log_action(
+                "action_denied",
+                game_id=gid_str,
+                player_id=player_id,
+                action=action,
+                phase_before=phase_before,
+                reason=str(e),
+            )
+            raise
 
         fsm = GameFSM(state)
 
         did_murder_pick = False
         did_fs_scene_pick = False
 
-        if action == "murder":
-            # Validate using the authoritative model phase (not the underlying state machine objects).
-            if state.phase != GamePhase.setup_awaiting_murder_pick:
-                raise ValueError("Game is not awaiting murder selection")
-            from app.game_store import set_murder_solution
+        try:
+            if action == "murder":
+                from app.game_store import set_murder_solution
 
-            state = await set_murder_solution(
-                r=r,
-                game_id=game_id,
+                state = await set_murder_solution(
+                    r=r,
+                    game_id=game_id,
+                    player_id=player_id,
+                    clue_id=str(payload.get("clue")),
+                    means_id=str(payload.get("means")),
+                )
+                did_murder_pick = True
+                fsm = GameFSM(state)
+
+            elif action == "fs_scene":
+                from app.game_store import set_fs_scene_selection
+
+                state = await set_fs_scene_selection(
+                    r=r,
+                    game_id=game_id,
+                    player_id=player_id,
+                    location_id=str(payload.get("location")),
+                    cause_id=str(payload.get("cause")),
+                )
+                did_fs_scene_pick = True
+                fsm = GameFSM(state)
+
+            elif action == "discuss":
+                from app.game_store import add_discussion_comment
+
+                state = add_discussion_comment(
+                    r=r,
+                    game_id=game_id,
+                    player_id=player_id,
+                    comments=str(payload.get("comments")),
+                )
+                fsm = GameFSM(state)
+
+            elif action == "solve":
+                from app.game_store import submit_solution_guess
+
+                state = submit_solution_guess(
+                    r=r,
+                    game_id=game_id,
+                    player_id=player_id,
+                    murderer_id=str(payload.get("murderer")),
+                    clue_id=str(payload.get("clue")),
+                    means_id=str(payload.get("means")),
+                )
+                fsm = GameFSM(state)
+
+            else:
+                raise ValueError(f"Unknown action: {action}")
+
+        except ValueError as e:
+            _log_action(
+                "action_denied",
+                game_id=gid_str,
                 player_id=player_id,
-                clue_id=str(payload.get("clue")),
-                means_id=str(payload.get("means")),
+                action=action,
+                phase_before=phase_before,
+                reason=str(e),
             )
-            did_murder_pick = True
-            fsm = GameFSM(state)
+            raise
 
-        elif action == "fs_scene":
-            if state.phase != GamePhase.setup_awaiting_fs_scene_pick:
-                raise ValueError("Game is not awaiting forensic scientist scene selection")
-            from app.game_store import set_fs_scene_selection
-
-            state = await set_fs_scene_selection(
-                r=r,
-                game_id=game_id,
-                player_id=player_id,
-                location_id=str(payload.get("location")),
-                cause_id=str(payload.get("cause")),
-            )
-            did_fs_scene_pick = True
-            fsm = GameFSM(state)
-
-        elif action == "discuss":
-            if state.phase == GamePhase.completed:
-                raise ValueError("Game is completed")
-            from app.game_store import add_discussion_comment
-
-            state = add_discussion_comment(
-                r=r,
-                game_id=game_id,
-                player_id=player_id,
-                comments=str(payload.get("comments")),
-            )
-            fsm = GameFSM(state)
-
-        elif action == "solve":
-            if fsm.current_state != fsm.discussion:
-                raise ValueError("Game is not in discussion phase")
-            from app.game_store import submit_solution_guess
-
-            state = submit_solution_guess(
-                r=r,
-                game_id=game_id,
-                player_id=player_id,
-                murderer_id=str(payload.get("murderer")),
-                clue_id=str(payload.get("clue")),
-                means_id=str(payload.get("means")),
-            )
-            fsm = GameFSM(state)
-
-        else:
-            raise ValueError(f"Unknown action: {action}")
-
+        # Sync phase based on the FSM's perspective.
+        # Also enforce that the resulting phase is consistent with our phase vocabulary.
         fsm.sync_phase_to_model()
+
+        phase_after = state.phase.value
+
+        if phase_after != phase_before:
+            _log_action(
+                "phase_transition",
+                game_id=gid_str,
+                player_id=player_id,
+                action=action,
+                phase_before=phase_before,
+                phase_after=phase_after,
+            )
+
+        _log_action(
+            "action_applied",
+            game_id=gid_str,
+            player_id=player_id,
+            action=action,
+            phase_before=phase_before,
+            phase_after=phase_after,
+        )
+
         save_game(r=r, state=state)
 
         entries: list[tuple[str, dict[str, str]]] = []
@@ -354,4 +461,15 @@ async def dispatch_action_async(
             entries.extend(_mailbox_entries_for_fs_scene_picked(state=state))
 
         ids = publish_many(r=r, entries=entries)
+
+        _log_action(
+            "action_finished",
+            game_id=gid_str,
+            player_id=player_id,
+            action=action,
+            phase_before=phase_before,
+            phase_after=phase_after,
+            mailbox_entries=len(ids),
+        )
+
         return ActionResult(state=state, mailbox_entry_ids=ids)

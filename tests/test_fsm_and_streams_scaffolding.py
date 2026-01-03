@@ -53,14 +53,15 @@ def test_generic_action_endpoint_publishes_mailbox_state_changed(client_and_redi
     _, fields0 = entries0[-1]
     assert fields0["type"] == "prompt_murder_pick"
 
-    # Use the new generic endpoint for murder.
+    # Use the typed generic endpoint for murder.
     body = {
+        "action": "murder",
         "player_id": murderer["player_id"],
         "clue": murderer["hand"]["clue_ids"][0],
         "means": murderer["hand"]["means_ids"][0],
     }
 
-    resp2 = client.post(f"/games/{state['game_id']}/actions/murder", json=body)
+    resp2 = client.post(f"/games/{state['game_id']}/actions", json=body)
     assert resp2.status_code == 200
 
     updated = resp2.json()

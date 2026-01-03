@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Body, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 import redis
-from typing import Any
 
 from app.actions import ActionName, dispatch_action_async
 from app.agent_runner import AgentRunnerConfig, run_game_agents_once
@@ -17,16 +16,9 @@ from app.api.models import (
     GameState,
     MurderPickRequest,
     SolveRequest,
+    GenericActionRequest,
 )
-from app.game_store import (
-    add_discussion_comment,
-    create_game,
-    get_game,
-    list_games,
-    set_fs_scene_selection,
-    set_murder_solution,
-    submit_solution_guess,
-)
+from app.game_store import create_game, get_game, list_games
 from app.websocket_hub import hub
 
 router = APIRouter()
@@ -95,7 +87,14 @@ async def murder_pick_route(
     r: redis.Redis = Depends(get_redis),
 ) -> GameState:
     try:
-        state = await set_murder_solution(r=r, game_id=game_id, player_id=player_id, clue_id=payload.clue, means_id=payload.means)
+        result = await dispatch_action_async(
+            r=r,
+            game_id=game_id,
+            player_id=player_id,
+            action="murder",
+            payload={"player_id": player_id, "clue": payload.clue, "means": payload.means},
+        )
+        state = result.state
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
 
@@ -111,7 +110,14 @@ async def discuss_route(
     r: redis.Redis = Depends(get_redis),
 ) -> GameState:
     try:
-        state = add_discussion_comment(r=r, game_id=game_id, player_id=player_id, comments=payload.comments)
+        result = await dispatch_action_async(
+            r=r,
+            game_id=game_id,
+            player_id=player_id,
+            action="discuss",
+            payload={"player_id": player_id, "comments": payload.comments},
+        )
+        state = result.state
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
 
@@ -127,14 +133,19 @@ async def solve_route(
     r: redis.Redis = Depends(get_redis),
 ) -> GameState:
     try:
-        state = submit_solution_guess(
+        result = await dispatch_action_async(
             r=r,
             game_id=game_id,
             player_id=player_id,
-            murderer_id=payload.murderer,
-            clue_id=payload.clue,
-            means_id=payload.means,
+            action="solve",
+            payload={
+                "player_id": player_id,
+                "murderer": payload.murderer,
+                "clue": payload.clue,
+                "means": payload.means,
+            },
         )
+        state = result.state
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
 
@@ -150,35 +161,13 @@ async def fs_scene_pick_route(
     r: redis.Redis = Depends(get_redis),
 ) -> GameState:
     try:
-        state = await set_fs_scene_selection(
+        result = await dispatch_action_async(
             r=r,
             game_id=game_id,
             player_id=player_id,
-            location_id=payload.location,
-            cause_id=payload.cause,
+            action="fs_scene",
+            payload={"player_id": player_id, "location": payload.location, "cause": payload.cause},
         )
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
-
-    await hub.broadcast(str(game_id), {"type": "game_updated", "game_id": str(game_id)})
-    return state
-
-
-@router.post("/games/{game_id}/actions/{action}", response_model=GameState)
-async def generic_action_route(
-    game_id: UUID,
-    action: str,
-    body: dict[str, Any],
-    r: redis.Redis = Depends(get_redis),
-) -> GameState:
-    try:
-        if action not in {"murder", "fs_scene", "discuss", "solve"}:
-            raise ValueError(f"Unknown action: {action}")
-        act: ActionName = action  # type: ignore[assignment]
-        pid = body.get("player_id")
-        if not pid:
-            raise ValueError("player_id is required")
-        result = await dispatch_action_async(r=r, game_id=game_id, player_id=str(pid), action=act, payload=body)
         state = result.state
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
@@ -241,3 +230,38 @@ async def run_agents_once_route(
         await hub.broadcast(str(game_id), {"type": "game_updated", "game_id": str(game_id)})
 
     return {"game_id": str(game_id), "handled": handled}
+
+
+@router.post("/games/{game_id}/actions", response_model=GameState)
+async def generic_action_route(
+    game_id: UUID,
+    body: GenericActionRequest = Body(..., discriminator="action"),
+    r: redis.Redis = Depends(get_redis),
+) -> GameState:
+    """Generic action endpoint (dev/test convenience).
+
+    This is typed via a discriminated union on the `action` field.
+
+    Note: this intentionally routes through the same dispatcher as the typed endpoints
+    and is safe for agent usage (it still shows up in the same logs).
+    """
+
+    try:
+        # `action` becomes authoritative via discriminated union.
+        action = body.action
+        act: ActionName = action  # type: ignore[assignment]
+
+        result = await dispatch_action_async(
+            r=r,
+            game_id=game_id,
+            player_id=body.player_id,
+            action=act,
+            payload=body.model_dump(),
+        )
+        state = result.state
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
+
+    await hub.broadcast(str(game_id), {"type": "game_updated", "game_id": str(game_id)})
+    return state
+

@@ -5,6 +5,7 @@ from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+from typing import Literal
 
 
 class GameCreateRequest(BaseModel):
@@ -121,3 +122,36 @@ class GameListResponse(BaseModel):
 
 class GameIdResponse(BaseModel):
     game_id: UUID
+
+
+class GenericMurderActionRequest(BaseModel):
+    action: Literal["murder"] = "murder"
+    player_id: str
+    clue: str
+    means: str
+
+
+class GenericFsSceneActionRequest(BaseModel):
+    action: Literal["fs_scene"] = "fs_scene"
+    player_id: str
+    location: str
+    cause: str
+
+
+class GenericDiscussActionRequest(BaseModel):
+    action: Literal["discuss"] = "discuss"
+    player_id: str
+    comments: str = Field(..., min_length=1, max_length=4000)
+
+
+class GenericSolveActionRequest(BaseModel):
+    action: Literal["solve"] = "solve"
+    player_id: str
+    murderer: str
+    clue: str
+    means: str
+
+
+# Pydantic v2 discriminated union via `Field(discriminator=...)` at use-site.
+# We keep this alias local to models to make the route signature clean.
+GenericActionRequest = GenericMurderActionRequest | GenericFsSceneActionRequest | GenericDiscussActionRequest | GenericSolveActionRequest
