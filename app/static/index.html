@@ -348,6 +348,28 @@
         background: rgba(122, 162, 255, 0.22);
         border-color: rgba(122, 162, 255, 0.55);
       }
+
+      /* Embedded scene picker (FS card) */
+      .scenePicker {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin-top: 8px;
+      }
+      .scenePicker .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .scenePicker .tagBtn {
+        cursor: pointer;
+        user-select: none;
+      }
+      .scenePicker .tagBtn.selected {
+        background: rgba(122, 162, 255, 0.25);
+        border-color: rgba(122, 162, 255, 0.8);
+      }
     </style>
   </head>
   <body>
@@ -468,9 +490,10 @@
 
       async function loadCardNameMaps() {
         const assetsRoot = '/ui-assets';
-        const [meansCsv, clueCsv] = await Promise.all([
+        const [meansCsv, clueCsv, lcdCsv] = await Promise.all([
           fetch(assetsRoot + '/means_cards.csv').then((r) => r.text()),
           fetch(assetsRoot + '/clue_cards.csv').then((r) => r.text()),
+          fetch(assetsRoot + '/location_and_cause_of_death_tiles.csv').then((r) => r.text()),
         ]);
 
         function parseCsv(text) {
@@ -488,9 +511,57 @@
           return out;
         }
 
+        function parseLocationCauseCsv(text) {
+          // Expected columns: id,tile,option (with optional quoting)
+          const lines = text.split(/\r?\n/).filter((l) => l.trim().length);
+          const byId = new Map();
+          const optionsByTile = new Map();
+
+          function splitRow(row) {
+            const out = [];
+            let cur = '';
+            let inQ = false;
+            for (let i = 0; i < row.length; i++) {
+              const ch = row[i];
+              if (ch === '"') {
+                inQ = !inQ;
+                continue;
+              }
+              if (ch === ',' && !inQ) {
+                out.push(cur.trim());
+                cur = '';
+                continue;
+              }
+              cur += ch;
+            }
+            out.push(cur.trim());
+            return out;
+          }
+
+          for (let i = 1; i < lines.length; i++) {
+            const cols = splitRow(lines[i]);
+            if (cols.length < 3) continue;
+            const id = cols[0];
+            const tile = cols[1];
+            const option = cols[2];
+            if (!id || !tile || !option) continue;
+            byId.set(id, { tile, option });
+            if (!optionsByTile.has(tile)) optionsByTile.set(tile, []);
+            optionsByTile.get(tile).push({ id, option });
+          }
+
+          for (const [tile, opts] of optionsByTile.entries()) {
+            opts.sort((a, b) => String(a.option).localeCompare(String(b.option)));
+            optionsByTile.set(tile, opts);
+          }
+
+          return { byId, optionsByTile };
+        }
+
         return {
           means: parseCsv(meansCsv),
           clues: parseCsv(clueCsv),
+          lcd: parseLocationCauseCsv(lcdCsv),
         };
       }
 
@@ -552,6 +623,143 @@
         return { text: 'unknown', cls: 'unknown' };
       }
 
+      function renderSceneCompact(state, cardNames) {
+        const locId = state?.fs_location_id || null;
+        const causeId = state?.fs_cause_id || null;
+
+        const lcd = cardNames?.lcd;
+        const lcdById = lcd?.byId || null;
+
+        const locTile = state?.fs_location_tile || (locId && lcdById?.get(locId)?.tile) || null;
+        const causeTile = state?.fs_cause_tile || (causeId && lcdById?.get(causeId)?.tile) || null;
+
+        const locOpts = (locTile && lcd?.optionsByTile?.get(locTile)) || [];
+        const causeOpts = (causeTile && lcd?.optionsByTile?.get(causeTile)) || [];
+
+        function chipsRow(opts, selectedId) {
+          const row = el('div', { class: 'tags' });
+          if (!opts || !opts.length) {
+            row.appendChild(el('span', { class: 'muted', text: '—' }));
+            return row;
+          }
+          for (const o of opts) {
+            const cls = ['tag'];
+            if (selectedId && o.id === selectedId) cls.push('selected');
+            row.appendChild(el('span', { class: cls.join(' '), title: o.id, text: o.option }));
+          }
+          return row;
+        }
+
+        return el('div', { class: 'card', style: 'background: var(--panel2); margin-top: 8px' }, [
+          el('div', { style: 'font-weight: 650; margin-bottom: 6px', text: 'Scene' }),
+
+          el('div', { class: 'line' }, [
+            el('span', { class: 'muted', text: 'Location tile:' }),
+            el('span', { text: locTile || '—' }),
+          ]),
+          chipsRow(locOpts, locId),
+
+          el('div', { class: 'line', style: 'margin-top: 8px' }, [
+            el('span', { class: 'muted', text: 'Cause tile:' }),
+            el('span', { text: causeTile || '—' }),
+          ]),
+          chipsRow(causeOpts, causeId),
+        ]);
+      }
+
+      function renderFsScenePicker(state, cardNames, playerId) {
+        const lcd = cardNames?.lcd;
+        const locTile = state?.fs_location_tile || null;
+        const causeTile = state?.fs_cause_tile || null;
+
+        const locOpts = (locTile && lcd?.optionsByTile?.get(locTile)) || [];
+        const causeOpts = (causeTile && lcd?.optionsByTile?.get(causeTile)) || [];
+
+        let selLoc = state?.fs_location_id || null;
+        let selCause = state?.fs_cause_id || null;
+
+        const errLine = el('div', { class: 'error', style: 'margin-top: 6px' });
+
+        function mkTileBlock(title, tile, opts, current, setCurrent) {
+          const header = el('div', { class: 'line' }, [
+            el('span', { class: 'muted', text: title + ':' }),
+            el('span', { text: tile || '—' }),
+          ]);
+
+          const tags = el('div', { class: 'tags' });
+          if (!tile) {
+            tags.appendChild(el('span', { class: 'muted', text: 'Waiting for dealt tile…' }));
+          } else if (!opts || !opts.length) {
+            tags.appendChild(el('span', { class: 'muted', text: 'No options found for tile.' }));
+          } else {
+            for (const o of opts) {
+              const cls = ['tag', 'tagBtn'];
+              if (current && o.id === current) cls.push('selected');
+              tags.appendChild(
+                el('button', {
+                  class: cls.join(' '),
+                  text: o.option,
+                  title: o.id,
+                  onclick: () => {
+                    setCurrent(o.id);
+                    const evt = new CustomEvent('deception:fs_scene_local_change');
+                    window.dispatchEvent(evt);
+                  },
+                }),
+              );
+            }
+          }
+
+          return el('div', { class: 'card', style: 'background: var(--panel2); border-style: dashed;' }, [
+            el('div', { style: 'font-weight: 650; margin-bottom: 6px', text: 'Pick ' + title }),
+            header,
+            tags,
+          ]);
+        }
+
+        const pickBtn = el('button', {
+          class: 'primary',
+          text: 'Confirm scene',
+          onclick: async () => {
+            errLine.textContent = '';
+            if (!selLoc || !selCause) {
+              errLine.textContent = 'Pick both a Location and a Cause of Death.';
+              return;
+            }
+            try {
+              await api(`/game/${state.game_id}/player/${encodeURIComponent(playerId)}/fs_scene`, {
+                method: 'POST',
+                body: JSON.stringify({ location: selLoc, cause: selCause }),
+              });
+            } catch (e) {
+              errLine.textContent = e.message;
+            }
+          },
+        });
+
+        const outer = el('div', { class: 'scenePicker' }, [
+          el('div', { class: 'muted', text: 'Set the scene (FS only)' }),
+        ]);
+
+        outer.appendChild(mkTileBlock('Location', locTile, locOpts, selLoc, (v) => (selLoc = v)));
+        outer.appendChild(mkTileBlock('Cause of Death', causeTile, causeOpts, selCause, (v) => (selCause = v)));
+        outer.appendChild(el('div', { class: 'row' }, [pickBtn]));
+        outer.appendChild(errLine);
+
+        window.addEventListener(
+          'deception:fs_scene_local_change',
+          () => {
+            const mount = qs('#fsSceneInnerMount');
+            if (!mount) return;
+            mount.innerHTML = '';
+            mount.appendChild(renderFsScenePicker({ ...state, fs_location_id: selLoc, fs_cause_id: selCause }, cardNames, playerId));
+          },
+          { once: true },
+        );
+
+        return el('div', { id: 'fsSceneInnerMount' }, [outer]);
+      }
+
       function renderPlayer(p, cardNames, state, pov) {
         const isFs = p.role === 'forensic_scientist';
         const badge = roleBadgeFor(p.role, pov, isFs);
@@ -579,6 +787,19 @@
           el('span', { class: 'muted', text: 'Role:' }),
           el('span', { class: roleCls.join(' '), text: badge.text }),
         ]);
+
+        // FS card: replace means/clues with scene UI.
+        if (isFs) {
+          const body = [roleLine];
+
+          if (pov === 'fs' && state.phase === 'setup_awaiting_fs_scene_pick') {
+            body.push(renderFsScenePicker(state, cardNames, p.player_id));
+          } else {
+            body.push(renderSceneCompact(state, cardNames));
+          }
+
+          return el('div', { class: 'card player' }, [header, el('div', { class: 'hand' }, body)]);
+        }
 
         // Selected chips for murderer solution (only visible in FS + murderer POV)
         let selectedMeans = null;
@@ -617,9 +838,14 @@
         const locId = state?.fs_location_id || null;
         const causeId = state?.fs_cause_id || null;
 
+        const lcdById = cardNames?.lcd?.byId || null;
+        const locLabel = locId && lcdById?.get(locId) ? `${lcdById.get(locId).option} (${lcdById.get(locId).tile})` : (locId || '—');
+        const causeLabel =
+          causeId && lcdById?.get(causeId) ? `${lcdById.get(causeId).option} (${lcdById.get(causeId).tile})` : (causeId || '—');
+
         const lines = [];
-        lines.push(el('div', { class: 'line' }, [el('span', { class: 'muted', text: 'Location:' }), el('span', { text: locId || '—' })]));
-        lines.push(el('div', { class: 'line' }, [el('span', { class: 'muted', text: 'Cause of Death:' }), el('span', { text: causeId || '—' })]));
+        lines.push(el('div', { class: 'line' }, [el('span', { class: 'muted', text: 'Location:' }), el('span', { text: locLabel })]));
+        lines.push(el('div', { class: 'line' }, [el('span', { class: 'muted', text: 'Cause of Death:' }), el('span', { text: causeLabel })]));
 
         return el('div', { class: 'card', style: 'margin-bottom: 12px' }, [
           el('div', { class: 'title' }, [
