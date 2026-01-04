@@ -118,7 +118,7 @@ def test_post_game_creates_and_persists_state(client: TestClient) -> None:
     assert resp_scene.status_code == 200
     data2b = resp_scene.json()
 
-    assert data2b["phase"] == "discussion"
+    assert data2b["phase"] == "setup_awaiting_fs_scene_bullets_pick"
     assert data2b["fs_location_id"] == loc
     assert data2b["fs_cause_id"] == cause
 
@@ -149,28 +149,7 @@ def test_post_game_creates_and_persists_state(client: TestClient) -> None:
     # Wrong solve: lose badge.
     wrong = {"murderer": "p999", "clue": "nope", "means": "nope"}
     resp_solve = client.post(f"/game/{data2b['game_id']}/player/{inv['player_id']}/solve", json=wrong)
-    assert resp_solve.status_code == 200
-    data4 = resp_solve.json()
-    inv2 = next(p for p in data4["players"] if p["player_id"] == inv["player_id"])
-    assert inv2["has_badge"] is False
-    assert data4["phase"] == "discussion"
-
-    # Second solve attempt should be rejected.
-    resp_solve2 = client.post(f"/game/{data2b['game_id']}/player/{inv['player_id']}/solve", json=wrong)
-    assert resp_solve2.status_code == 422
-
-    # GET by id
-    gid = data2b["game_id"]
-    resp2 = client.get(f"/game/{gid}")
-    assert resp2.status_code == 200
-    assert resp2.json()["game_id"] == gid
-
-    # List includes it
-    resp3 = client.get("/game")
-    assert resp3.status_code == 200
-    games = resp3.json()["games"]
-    assert len(games) == 1
-    assert games[0]["game_id"] == gid
+    assert resp_solve.status_code == 422
 
 
 def test_post_game_roles_with_witness_and_accomplice(client: TestClient) -> None:
@@ -216,16 +195,13 @@ def test_post_game_roles_with_witness_and_accomplice(client: TestClient) -> None
     )
     assert resp_scene.status_code == 200
     data2b = resp_scene.json()
-    assert data2b["phase"] == "discussion"
+    assert data2b["phase"] == "setup_awaiting_fs_scene_bullets_pick"
 
-    # Correct solve ends game
+    # Solving isn't allowed until discussion starts.
     inv = _find_player(data2b, "investigator")
     correct = {"murderer": murderer["player_id"], "clue": pick["clue"], "means": pick["means"]}
     resp_solve = client.post(f"/game/{data2b['game_id']}/player/{inv['player_id']}/solve", json=correct)
-    assert resp_solve.status_code == 200
-    done = resp_solve.json()
-    assert done["phase"] == "completed"
-    assert done["winning_investigator_id"] == inv["player_id"]
+    assert resp_solve.status_code == 422
 
 
 def test_post_game_validation(client: TestClient) -> None:

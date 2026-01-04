@@ -53,6 +53,8 @@ def test_generic_action_endpoint_publishes_mailbox_state_changed(client_and_redi
             "murder_solution_chosen",
             "witness_identities_revealed",
             "prompt_fs_scene_pick",
+            "fs_scene_selected",
+            "prompt_fs_scene_bullets_pick",
         }
 
     # Murderer should also have a murder_solution_chosen message.

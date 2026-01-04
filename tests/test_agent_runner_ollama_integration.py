@@ -49,12 +49,20 @@ async def test_agent_runner_ollama_env_gated() -> None:
     assert updated.solution is not None
     assert updated.phase == GamePhase.setup_awaiting_fs_scene_pick
 
-    # Run again: FS should pick and move to discussion.
+    # Run again: FS should pick and move to awaiting bullets pick.
     handled2 = await run_game_agents_once(r=r, game_id=str(state.game_id), config=cfg)
     assert handled2 is True
 
     updated2 = get_game(r=r, game_id=state.game_id)
     assert updated2 is not None
-    assert updated2.phase == GamePhase.discussion
+    assert updated2.phase == GamePhase.setup_awaiting_fs_scene_bullets_pick
     assert updated2.fs_location_id is not None
     assert updated2.fs_cause_id is not None
+
+    # Run again: FS should pick bullets and move to discussion.
+    handled3 = await run_game_agents_once(r=r, game_id=str(state.game_id), config=cfg)
+    assert handled3 is True
+
+    updated3 = get_game(r=r, game_id=state.game_id)
+    assert updated3 is not None
+    assert updated3.phase == GamePhase.discussion

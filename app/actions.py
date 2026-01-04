@@ -19,7 +19,7 @@ from app.turn_processing.validators import ValidationContext, pipeline_for_actio
 logger = logging.getLogger("deception.actions")
 
 
-ActionName = Literal["murder", "fs_scene", "discuss", "solve"]
+ActionName = Literal["murder", "fs_scene", "fs_scene_bullets", "discuss", "solve"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +168,60 @@ def _mailbox_entries_for_fs_scene_picked(*, state: GameState) -> list[tuple[str,
         "game_id": gid,
         "location_id": state.fs_location_id,
         "cause_id": state.fs_cause_id,
+        "ts": _now_iso(),
+    }
+    return [(Mailbox(game_id=gid, player_id=p.player_id).key, payload) for p in state.players]
+
+
+def _mailbox_entries_for_fs_scene_bullets_prompt(*, state: GameState) -> list[tuple[str, dict[str, str]]]:
+    """Prompt the FS to pick one bullet option for each dealt Scene tile."""
+
+    gid = str(state.game_id)
+    fs = next((p for p in state.players if p.role == "forensic_scientist"), None)
+    if fs is None:
+        return []
+
+    from app.assets.singleton import get_assets
+
+    assets = get_assets()
+    scene = assets.scene_tiles
+
+    tiles = list(state.fs_scene_tiles or [])
+
+    # Build a compact, parseable payload:
+    # - tiles: comma-separated tile names (stable order as stored)
+    # - options__<idx>: comma-separated options
+    payload: dict[str, str] = {
+        "type": "prompt_fs_scene_bullets_pick",
+        "game_id": gid,
+        "player_id": fs.player_id,
+        "phase": state.phase.value,
+        "tiles": "||".join(tiles),
+        "ts": _now_iso(),
+    }
+
+    for idx, tile in enumerate(tiles):
+        opts = list(scene.options_for(tile))
+        payload[f"options__{idx}"] = "||".join(opts)
+
+    # Provide full context for the AI agent.
+    if state.solution is not None:
+        payload["clue_id"] = state.solution.clue_id
+        payload["means_id"] = state.solution.means_id
+
+    if state.fs_location_id:
+        payload["location_id"] = state.fs_location_id
+    if state.fs_cause_id:
+        payload["cause_id"] = state.fs_cause_id
+
+    return [(Mailbox(game_id=gid, player_id=fs.player_id).key, payload)]
+
+
+def _mailbox_entries_for_fs_scene_bullets_picked(*, state: GameState) -> list[tuple[str, dict[str, str]]]:
+    gid = str(state.game_id)
+    payload = {
+        "type": "fs_scene_bullets_selected",
+        "game_id": gid,
         "ts": _now_iso(),
     }
     return [(Mailbox(game_id=gid, player_id=p.player_id).key, payload) for p in state.players]
@@ -348,6 +402,7 @@ async def dispatch_action_async(
 
         did_murder_pick = False
         did_fs_scene_pick = False
+        did_fs_scene_bullets_pick = False
 
         try:
             if action == "murder":
@@ -374,6 +429,25 @@ async def dispatch_action_async(
                     cause_id=str(payload.get("cause")),
                 )
                 did_fs_scene_pick = True
+                fsm = GameFSM(state)
+
+            elif action == "fs_scene_bullets":
+                from app.game_store import set_fs_scene_bullets_selection
+
+                picks = payload.get("picks")
+                if not isinstance(picks, dict):
+                    raise ValueError("picks must be an object")
+
+                # Convert values to strings defensively.
+                norm: dict[str, str] = {str(k): str(v) for k, v in picks.items()}
+
+                state = await set_fs_scene_bullets_selection(
+                    r=r,
+                    game_id=game_id,
+                    player_id=player_id,
+                    picks=norm,
+                )
+                did_fs_scene_bullets_pick = True
                 fsm = GameFSM(state)
 
             elif action == "discuss":
@@ -452,6 +526,9 @@ async def dispatch_action_async(
             entries.extend(_mailbox_entries_for_fs_scene_prompt(state=state))
         if did_fs_scene_pick:
             entries.extend(_mailbox_entries_for_fs_scene_picked(state=state))
+            entries.extend(_mailbox_entries_for_fs_scene_bullets_prompt(state=state))
+        if did_fs_scene_bullets_pick:
+            entries.extend(_mailbox_entries_for_fs_scene_bullets_picked(state=state))
 
         ids = publish_many(r=r, entries=entries)
 

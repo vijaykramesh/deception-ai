@@ -29,7 +29,7 @@ class GameFSM(StateMachine):
     """FSM wrapper around GameState.
 
     This is intentionally minimal scaffolding:
-    - phases: awaiting murderer pick -> awaiting FS scene pick -> discussion -> completed
+    - phases: awaiting murderer pick -> awaiting FS scene pick -> awaiting FS scene bullets pick -> discussion -> completed
     - actions are applied by service layer; FSM only guards transitions.
     """
 
@@ -42,11 +42,16 @@ class GameFSM(StateMachine):
         GamePhase.setup_awaiting_fs_scene_pick.value,
         value=GamePhase.setup_awaiting_fs_scene_pick.value,
     )
+    awaiting_fs_scene_bullets_pick = State(
+        GamePhase.setup_awaiting_fs_scene_bullets_pick.value,
+        value=GamePhase.setup_awaiting_fs_scene_bullets_pick.value,
+    )
     discussion = State(GamePhase.discussion.value, value=GamePhase.discussion.value)
     completed = State(GamePhase.completed.value, value=GamePhase.completed.value, final=True)
 
     murder_picked = awaiting_murder_pick.to(awaiting_fs_scene_pick)
-    fs_scene_picked = awaiting_fs_scene_pick.to(discussion)
+    fs_scene_picked = awaiting_fs_scene_pick.to(awaiting_fs_scene_bullets_pick)
+    fs_scene_bullets_picked = awaiting_fs_scene_bullets_pick.to(discussion)
     finish = discussion.to(completed)
 
     def __init__(self, game: GameState):

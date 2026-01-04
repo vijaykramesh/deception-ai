@@ -55,7 +55,7 @@ async def test_fs_scene_selection_happy_path(client_and_redis) -> None:
         cause_id=cause,
     )
 
-    assert state.phase == GamePhase.discussion
+    assert state.phase == GamePhase.setup_awaiting_fs_scene_bullets_pick
     assert state.fs_location_id == loc
     assert state.fs_cause_id == cause
 

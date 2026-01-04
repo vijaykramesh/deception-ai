@@ -142,6 +142,54 @@ async def handle_mailbox_entry(
         )
         return True
 
+    if msg_type == "prompt_fs_scene_bullets_pick":
+        if state.phase.value != "setup_awaiting_fs_scene_bullets_pick":
+            return False
+
+        gid = UUID(game_id)
+
+        tiles = [t for t in (fields.get("tiles") or "").split("||") if t]
+        if not tiles:
+            # Backstop: use persisted dealt tiles.
+            tiles = list(state.fs_scene_tiles)
+
+        options_by_tile: dict[str, list[str]] = {}
+        for idx, tile in enumerate(tiles):
+            raw_opts = fields.get(f"options__{idx}") or ""
+            if raw_opts:
+                options_by_tile[tile] = [o for o in raw_opts.split("||") if o]
+
+        # If prompt didn't include options (older message), compute from assets.
+        if not all(options_by_tile.get(t) for t in tiles):
+            from app.assets.singleton import get_assets
+
+            scene = get_assets().scene_tiles
+            for t in tiles:
+                options_by_tile[t] = list(scene.options_for(t))
+
+        # Need full set to proceed.
+        if len(tiles) != 4:
+            return False
+        if any(not options_by_tile.get(t) for t in tiles):
+            return False
+
+        picks = await decide_and_pick_fs_scene_bullets_via_llm(
+            r=r,
+            game_id=game_id,
+            fs_id=player_id,
+            dealt_tiles=tiles,
+            options_by_tile=options_by_tile,
+        )
+
+        await dispatch_action_async(
+            r=r,
+            game_id=gid,
+            player_id=player_id,
+            action="fs_scene_bullets",
+            payload={"player_id": player_id, "picks": picks},
+        )
+        return True
+
     # For now, ignore other mailbox message types.
     return False
 
@@ -193,7 +241,7 @@ async def run_agent_step(*, r: redis.Redis, game_id: str, player_id: str, config
         for msg_id, fields in messages:
             did = await handle_mailbox_entry(r=r_sync, game_id=game_id, player_id=player_id, fields=fields)
             # Ack regardless; mailbox is an append-only history so we don't want to reprocess.
-            r_sync.xack(stream_key, group, msg_id)
+            getattr(r_sync, "xack")(stream_key, group, msg_id)
             handled_any = handled_any or did
 
     return handled_any
@@ -227,9 +275,14 @@ async def run_game_agents_once(*, r: redis.Redis, game_id: str, config: AgentRun
             return False
         return await run_agent_step(r=r, game_id=game_id, player_id=fs.player_id, config=config)
 
+    if state.phase.value == "setup_awaiting_fs_scene_bullets_pick":
+        fs = next((p for p in state.players if p.role == "forensic_scientist" and p.is_ai), None)
+        if fs is None:
+            return False
+        return await run_agent_step(r=r, game_id=game_id, player_id=fs.player_id, config=config)
+
     # In other phases (discussion/completed), do nothing for now.
     return False
-
 
 
 async def decide_and_pick_solution_via_llm(
@@ -344,3 +397,72 @@ async def decide_and_pick_fs_scene_via_llm(
     )
 
     return picked.location, picked.cause
+
+
+async def decide_and_pick_fs_scene_bullets_via_llm(
+    *,
+    r: redis.Redis,
+    game_id: str,
+    fs_id: str,
+    dealt_tiles: list[str],
+    options_by_tile: dict[str, list[str]],
+) -> dict[str, str]:
+    """Use the FS agent to pick one option per dealt Scene tile.
+
+    The prompt includes the base player + forensic scientist prompts via the normal context stack.
+    It also includes explicit private truth info (murderer id, clue+means ids) and the FS's
+    public scene selection, plus the full list of active clue/means cards on the table.
+    """
+
+    from uuid import UUID
+
+    from app.agents.scene_bullets_picker import pick_scene_bullets_with_agent
+
+    state = get_game(r=r, game_id=UUID(game_id))
+    if state is None:
+        raise ValueError("Game not found")
+
+    fs = next(p for p in state.players if p.player_id == fs_id)
+
+    murderer_id = next((p.player_id for p in state.players if p.role == "murderer"), None)
+    clue_id = state.solution.clue_id if state.solution else None
+    means_id = state.solution.means_id if state.solution else None
+
+    # All active cards on the board (everyone's outward-facing cards).
+    clue_ids: list[str] = []
+    means_ids: list[str] = []
+    for p in state.players:
+        if p.role == "forensic_scientist":
+            continue
+        clue_ids.extend(list(p.hand.clue_ids))
+        means_ids.extend(list(p.hand.means_ids))
+
+    base = make_base_player_context(system_prefix="")
+
+    player_ctx = PlayerContext(
+        player_id=fs.player_id,
+        display_name=f"Seat {fs.seat} (Forensic Scientist)",
+        prompt=(
+            "You are the Forensic Scientist. You must remain silent. "
+            "Select one bullet option for each dealt Scene tile.\n\n"
+            f"Private truth (do NOT reveal literally): murderer_id={murderer_id}, clue_id={clue_id}, means_id={means_id}.\n"
+            f"FS selected location_id={state.fs_location_id} and cause_id={state.fs_cause_id}.\n\n"
+            "Active board cards (IDs):\n"
+            f"- clue_ids={sorted(set(clue_ids))}\n"
+            f"- means_ids={sorted(set(means_ids))}\n"
+        ),
+    )
+    role_ctx = make_role_context(RoleName.forensic_scientist)
+    ctx = compose_context(base=base, player=player_ctx, role=role_ctx)
+
+    agent = create_default_agent(name=f"fs-{fs.player_id}")
+
+    picked = await pick_scene_bullets_with_agent(
+        agent=agent,
+        ctx=ctx,
+        dealt_tiles=dealt_tiles,
+        options_by_tile=options_by_tile,
+    )
+
+    return picked.picks
+

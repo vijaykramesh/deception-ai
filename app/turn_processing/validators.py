@@ -94,6 +94,12 @@ DEFAULT_ACTION_PIPELINES: dict[str, ValidatorPipeline] = {
             RoleValidator(allowed_roles={"forensic_scientist"}),
         )
     ),
+    "fs_scene_bullets": ValidatorPipeline(
+        validators=(
+            PhaseValidator(allowed_phases={GamePhase.setup_awaiting_fs_scene_bullets_pick}),
+            RoleValidator(allowed_roles={"forensic_scientist"}),
+        )
+    ),
     "solve": ValidatorPipeline(
         validators=(
             PhaseValidator(allowed_phases={GamePhase.discussion}),

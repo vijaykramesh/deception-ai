@@ -79,6 +79,7 @@ class PlayerState(BaseModel):
 class GamePhase(StrEnum):
     setup_awaiting_murder_pick = "setup_awaiting_murder_pick"
     setup_awaiting_fs_scene_pick = "setup_awaiting_fs_scene_pick"
+    setup_awaiting_fs_scene_bullets_pick = "setup_awaiting_fs_scene_bullets_pick"
     discussion = "discussion"
     completed = "completed"
 
@@ -109,6 +110,13 @@ class GameState(BaseModel):
     fs_location_id: str | None = None
     fs_cause_id: str | None = None
 
+    # FS dealt scene tiles for bullet-marker selection (Round 1 evidence setup).
+    fs_scene_tiles: list[str] = Field(default_factory=list)
+
+    # FS picks exactly one option per dealt scene tile.
+    # Mapping from tile name -> option name.
+    fs_scene_bullets: dict[str, str] = Field(default_factory=dict)
+
     # When completed.
     winning_investigator_id: str | None = None
 
@@ -138,6 +146,12 @@ class GenericFsSceneActionRequest(BaseModel):
     cause: str
 
 
+class GenericFsSceneBulletsActionRequest(BaseModel):
+    action: Literal["fs_scene_bullets"] = "fs_scene_bullets"
+    player_id: str
+    picks: dict[str, str]
+
+
 class GenericDiscussActionRequest(BaseModel):
     action: Literal["discuss"] = "discuss"
     player_id: str
@@ -154,4 +168,10 @@ class GenericSolveActionRequest(BaseModel):
 
 # Pydantic v2 discriminated union via `Field(discriminator=...)` at use-site.
 # We keep this alias local to models to make the route signature clean.
-GenericActionRequest = GenericMurderActionRequest | GenericFsSceneActionRequest | GenericDiscussActionRequest | GenericSolveActionRequest
+GenericActionRequest = (
+    GenericMurderActionRequest
+    | GenericFsSceneActionRequest
+    | GenericFsSceneBulletsActionRequest
+    | GenericDiscussActionRequest
+    | GenericSolveActionRequest
+)

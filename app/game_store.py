@@ -178,7 +178,61 @@ async def set_fs_scene_selection(
     state.fs_location_id = location_id
     state.fs_cause_id = cause_id
 
-    # After scene selection, the table discussion begins.
+    # After scene selection, the FS must select one bullet option for each dealt Scene tile.
+    state.phase = GamePhase.setup_awaiting_fs_scene_bullets_pick
+
+    save_game(r=r, state=state)
+    return state
+
+
+async def set_fs_scene_bullets_selection(
+    *,
+    r: redis.Redis,
+    game_id: UUID,
+    player_id: str,
+    picks: dict[str, str],
+) -> GameState:
+    """Persist FS 'bullet markers' selection for the four dealt Scene tiles.
+
+    `picks` is a mapping: tile_name -> option_name.
+
+    Validations:
+    - correct phase
+    - player is FS
+    - picks contains exactly one option per dealt tile
+    - selected option exists on that tile
+    """
+
+    state = require_game(r=r, game_id=game_id)
+    pidx = require_player(state=state, player_id=player_id)
+    player = state.players[pidx]
+
+    if state.phase != GamePhase.setup_awaiting_fs_scene_bullets_pick:
+        raise ValueError("Game is not awaiting forensic scientist scene bullets selection")
+
+    if player.role != "forensic_scientist":
+        raise ValueError("Only the forensic scientist can set scene bullets")
+
+    assets = get_assets()
+    scene = assets.scene_tiles
+
+    dealt_tiles = list(state.fs_scene_tiles)
+    if len(dealt_tiles) != 4:
+        raise ValueError("Game is missing dealt scene tiles")
+
+    normalized: dict[str, str] = {}
+    for tile in dealt_tiles:
+        opt = picks.get(tile)
+        if not isinstance(opt, str) or not opt.strip():
+            raise ValueError(f"Missing pick for tile: {tile}")
+        option = opt.strip()
+        if not scene.has_option(tile, option):
+            raise ValueError(f"Invalid option '{option}' for tile '{tile}'")
+        normalized[tile] = option
+
+    state.fs_scene_bullets = normalized
+
+    # After bullets are selected, discussion begins.
     state.phase = GamePhase.discussion
 
     save_game(r=r, state=state)
@@ -279,6 +333,17 @@ async def create_game(
     selected_location_tile = rng.choice(location_tiles) if location_tiles else None
     selected_cause_tile = rng.choice(cause_tiles) if cause_tiles else None
 
+    # Deal 4 scene tiles for the FS to later place bullet markers on.
+    scene_tiles = sorted(list(assets.scene_tiles.by_tile.keys()))
+    selected_scene_tiles: list[str] = []
+    if scene_tiles:
+        # sample without replacement when possible
+        k = min(4, len(scene_tiles))
+        selected_scene_tiles = list(rng.sample(scene_tiles, k=k))
+        # If fewer than 4 tiles exist (e.g. tiny test dataset), repeat choices deterministically.
+        while len(selected_scene_tiles) < 4:
+            selected_scene_tiles.append(rng.choice(scene_tiles))
+
     state = GameState(
         game_id=game_id,
         num_ai_players=num_ai_players,
@@ -295,6 +360,8 @@ async def create_game(
         discussion=[],
         fs_location_tile=selected_location_tile,
         fs_cause_tile=selected_cause_tile,
+        fs_scene_tiles=selected_scene_tiles,
+        fs_scene_bullets={},
     )
 
     # redis-py is synchronous. Some IDEs confuse `redis.Redis` with async variants,
