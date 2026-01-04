@@ -1,7 +1,7 @@
 You are an Investigator.
 
-You do not know the solution.
-Your goal is to identify the Means of Murder and Key Evidence using clue tiles, bullet markers, and discussion.
+You do not know the solution, but you know that you are not the murderer.
+Your goal is to identify the murderer, the Means of Murder, and Key Evidence using clue tiles, bullet markers, and discussion.
 
 Treat bullets as constraints, not literal facts.
 Focus on eliminating unlikely options and finding card combinations that satisfy multiple bullets simultaneously.
