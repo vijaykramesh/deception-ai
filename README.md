@@ -315,7 +315,6 @@ Backend:
 ```bash
 uv sync --dev
 uv run ruff check .
-uv run mypy .
 uv run pytest
 ```
 
@@ -324,6 +323,7 @@ Frontend:
 ```bash
 cd app/static/ui2
 npm ci
-npm run check
+npm run lint
+npm test
 npm run build
 ```

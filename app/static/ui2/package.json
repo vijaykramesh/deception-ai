@@ -8,16 +8,23 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json",
-    "lint": "npm run check",
-    "test": "echo 'No frontend tests configured yet' && exit 0"
+    "check:tests": "svelte-check --tsconfig ./tsconfig.test.json",
+    "lint": "npm run check:tests",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.0.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.0",
+    "@testing-library/svelte": "^5.2.9",
+    "jsdom": "^25.0.1",
     "svelte": "^4.2.0",
     "svelte-check": "^3.8.0",
     "svelte-preprocess": "^5.1.4",
     "typescript": "^5.6.0",
-    "vite": "^5.4.0"
+    "vite": "^5.4.0",
+    "vitest": "^2.1.9"
   },
   "volta": {
     "node": "24.12.0"
