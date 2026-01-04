@@ -48,7 +48,7 @@ class PhaseValidator(TurnValidator):
 class CompletedGameValidator(TurnValidator):
     """Deny almost all actions after the game is completed."""
 
-    allow_actions: set[str] = frozenset()
+    allow_actions: frozenset[str] = frozenset()
 
     def validate(self, *, ctx: ValidationContext, state: GameState) -> None:
         if state.phase == GamePhase.completed and ctx.action not in self.allow_actions:

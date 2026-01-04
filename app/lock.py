@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import time
 from contextlib import contextmanager
+from typing import Iterator
 
 import redis
 
 
 @contextmanager
-def game_lock(*, r: redis.Redis, game_id: str, ttl_ms: int = 5_000):
+def game_lock(*, r: redis.Redis, game_id: str, ttl_ms: int = 5_000) -> Iterator[None]:
     """Best-effort per-game lock.
 
     This is basic scaffolding for single-process tests/dev.
@@ -28,4 +29,3 @@ def game_lock(*, r: redis.Redis, game_id: str, ttl_ms: int = 5_000):
         r.delete(key)
         # small yield to avoid tight contention in tests
         time.sleep(0)
-
