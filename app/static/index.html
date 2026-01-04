@@ -47,6 +47,19 @@
         font-weight: 600;
       }
 
+      button:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
+
+      /* Pressed/running state for async actions */
+      button.pressed {
+        background: rgba(122, 162, 255, 0.22);
+        border-color: rgba(122, 162, 255, 0.65);
+        box-shadow: inset 0 0 0 2px rgba(122, 162, 255, 0.18);
+        color: var(--text);
+      }
+
       .wrap {
         max-width: 1400px;
         margin: 0 auto;
@@ -789,23 +802,53 @@
       async function renderGame(gameId) {
         app.innerHTML = '';
 
+        // Local UI state for this view.
+        let isRunAgentsPending = false;
+        let runAgentsBtn = null;
+
+        function syncRunAgentsBtn() {
+          if (!runAgentsBtn) return;
+          runAgentsBtn.disabled = isRunAgentsPending;
+          runAgentsBtn.classList.toggle('pressed', isRunAgentsPending);
+          runAgentsBtn.setAttribute('aria-pressed', String(isRunAgentsPending));
+          runAgentsBtn.setAttribute('aria-busy', String(isRunAgentsPending));
+          runAgentsBtn.textContent = isRunAgentsPending ? 'Running AI agents…' : 'Run AI agents once';
+        }
+
         const top = el('div', { class: 'row', style: 'margin-bottom: 12px' }, [
           el('button', { text: '← Home', onclick: () => navigate('#/') }),
           el('div', { class: 'muted', text: 'Game:' }),
           el('div', { style: 'font-weight: 600', text: gameId }),
           el('div', { style: 'flex: 1' }),
-          el('button', {
-            text: 'Run AI agents once',
-            onclick: async () => {
-              const err = qs('#gameErr');
-              err.textContent = '';
-              try {
-                await api(`/games/${gameId}/agents/run_once?block_ms=10&count=10`, { method: 'POST' });
-              } catch (e) {
-                err.textContent = e.message;
-              }
-            },
-          }),
+          (() => {
+            runAgentsBtn = el('button', {
+              text: 'Run AI agents once',
+              onclick: async () => {
+                // Guard against double clicks.
+                if (isRunAgentsPending) return;
+
+                const err = qs('#gameErr');
+                err.textContent = '';
+
+                isRunAgentsPending = true;
+                syncRunAgentsBtn();
+
+                try {
+                  await api(`/games/${gameId}/agents/run_once?block_ms=10&count=10`, { method: 'POST' });
+                } catch (e) {
+                  err.textContent = e.message;
+                } finally {
+                  // If the view is still mounted, clear the pressed state.
+                  // (Rerenders from websocket/poll will also clear it.)
+                  isRunAgentsPending = false;
+                  syncRunAgentsBtn();
+                }
+              },
+            });
+            runAgentsBtn.setAttribute('aria-pressed', 'false');
+            runAgentsBtn.setAttribute('aria-busy', 'false');
+            return runAgentsBtn;
+          })(),
         ]);
 
         const controls = el('div', { class: 'card', style: 'margin-bottom: 12px' }, [
@@ -866,6 +909,12 @@
 
         function rerender(newState) {
           state = newState;
+
+          // Any successful update means we're no longer waiting on the run-once call.
+          if (isRunAgentsPending) {
+            isRunAgentsPending = false;
+            syncRunAgentsBtn();
+          }
 
           const playerId = qs('#postAs').value.trim() || fsDefault;
 
