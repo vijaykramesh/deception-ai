@@ -25,6 +25,12 @@ _static_dir = _app_dir / "static"
 if _static_dir.exists():
     app.mount("/ui", StaticFiles(directory=str(_static_dir), html=True), name="ui")
 
+    # Serve the Vite/Svelte UI2.
+    # Production build output is app/static/ui2/dist.
+    _ui2_dist_dir = _static_dir / "ui2" / "dist"
+    if _ui2_dist_dir.exists():
+        app.mount("/ui2", StaticFiles(directory=str(_ui2_dist_dir), html=True), name="ui2")
+
 # Expose raw CSVs for id->name lookups in the UI.
 # Use an absolute path so running from a different CWD (e.g., `pytest` from tests/) works.
 _assets_dir = _project_root / "assets"

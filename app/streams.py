@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Mapping, Sequence, cast
 
 import redis
 
@@ -15,15 +16,17 @@ class Mailbox:
         return f"mailbox:{self.game_id}:{self.player_id}"
 
 
-def publish_to_mailbox(*, r: redis.Redis, mailbox: Mailbox, fields: dict[str, str]) -> str:
+def publish_to_mailbox(*, r: redis.Redis, mailbox: Mailbox, fields: Mapping[str, str]) -> str:
     """Append an entry to a player's mailbox stream."""
 
-    return r.xadd(mailbox.key, fields)
+    # redis-py stubs expect field/value unions; in our app we only use string fields/values.
+    stream_id = r.xadd(mailbox.key, {str(k): str(v) for k, v in fields.items()})
+    return cast(str, stream_id)
 
 
-def publish_many(*, r: redis.Redis, entries: list[tuple[str, dict[str, str]]]) -> list[str]:
+def publish_many(*, r: redis.Redis, entries: Sequence[tuple[str, Mapping[str, str]]]) -> list[str]:
     ids: list[str] = []
     for key, fields in entries:
-        ids.append(r.xadd(key, fields))
+        stream_id = r.xadd(key, {str(k): str(v) for k, v in fields.items()})
+        ids.append(cast(str, stream_id))
     return ids
-

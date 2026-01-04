@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 
+import httpx
 import pytest
 
 from app.agent_runner import AgentRunnerConfig, run_game_agents_once
@@ -10,8 +11,17 @@ from app.game_store import create_game, get_game
 
 
 def _ollama_ready() -> bool:
-    # Same gating as other integration tests
-    return bool(os.environ.get("OPENAI_BASE_URL") and os.environ.get("OPENAI_MODEL"))
+    base = os.environ.get("OPENAI_BASE_URL")
+    model = os.environ.get("OPENAI_MODEL")
+    if not base or not model:
+        return False
+
+    # quick reachability probe (matches other env-gated tests)
+    try:
+        httpx.get(base.rstrip("/") + "/models", timeout=1.5)
+        return True
+    except Exception:
+        return False
 
 
 @pytest.mark.asyncio
@@ -31,7 +41,7 @@ async def test_agent_runner_ollama_env_gated() -> None:
     """
 
     if not _ollama_ready():
-        pytest.skip("Missing OPENAI_BASE_URL/OPENAI_MODEL")
+        pytest.skip("Ollama not reachable or missing OPENAI_BASE_URL/OPENAI_MODEL")
 
     import redis
 

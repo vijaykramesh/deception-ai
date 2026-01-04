@@ -34,14 +34,21 @@ This repo is intentionally service-first: the core focus is a clean control flow
 
 ### Web UI
 
-A tiny built-in UI is served by the API (no separate frontend build step). It’s intentionally minimal, but it’s good for driving the state machine and debugging POV/redaction.
+There are currently two built-in UIs served by the API:
 
-- Open the UI at: `/ui/`
-- The gameplay page includes a header (`Deception: AI`) with a **POV selector** (view settings live in the header).
-- Discussion messages are posted as the **Forensic Scientist** (or fall back to the first player).
+- **`/ui/`**: the original single-file HTML UI (no build step)
+- **`/ui2/`**: a Vite + Svelte + TypeScript reimplementation (built output is served by the API)
+
+Both UIs talk to the same API endpoints and subscribe to the same websocket updates. The goal is to keep
+behavior identical so you can compare them side-by-side.
+
+#### UI features
+
+- Gameplay page includes a header (`Deception: AI`) with a **POV selector** (stored in localStorage)
+- Discussion messages are posted as the **Forensic Scientist** (or fall back to the first player)
 - **Run AI agents once** button:
   - Calls `POST /games/{game_id}/agents/run_once`
-  - Shows a pressed/“running” state while the request is in-flight, and un-presses when the backend responds.
+  - Shows a pressed/“running” state while the request is in-flight
 
 ### Service + architecture
 
@@ -175,25 +182,79 @@ This repo includes a `docker-compose.yml` with Redis and the API container.
 
 The compose file loads `.env` automatically.
 
-### Run against Ollama (recommended)
-
-Start Ollama:
+To start everything:
 
 ```bash
-ollama serve
+docker compose up --build
 ```
 
-Pull the model (example):
+Then open:
+
+- API: `http://localhost:8000/`
+- Original UI (no build step): `http://localhost:8000/ui/`
+- New UI (requires a prior build, see below): `http://localhost:8000/ui2/`
+
+### Run API locally (no Docker)
+
+If you prefer running the API directly on your machine:
 
 ```bash
-ollama pull gpt-oss:20b
+uv sync --dev
+uv run uvicorn app.main:app --reload --port 8000
 ```
 
-Edit `.env` to point at the OpenAI-compatible endpoint:
+Make sure Redis is running and `REDIS_URL` points to it (commonly `redis://localhost:6379/0`).
 
-- `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`
-- `OPENAI_MODEL=gpt-oss:20b`
-- `OPENAI_API_KEY=ollama`
+### Frontend (`/ui2/`) development
+
+The original UI (`/ui/`) is a single static file and needs no build.
+
+The new UI (`/ui2/`) is a Vite + Svelte + TypeScript project located at:
+
+- `app/static/ui2/`
+
+#### Install frontend deps
+
+```bash
+cd app/static/ui2
+npm ci
+```
+
+#### Dev server (hot reload)
+
+You have two options:
+
+1) Run the API on port 8000 and proxy API calls from Vite to it.
+2) Skip the dev server and just do production builds served by FastAPI.
+
+If you want the dev server with an API proxy:
+
+```bash
+cd app/static/ui2
+npm run dev -- --port 5173
+```
+
+Then open the dev server URL Vite prints.
+
+Note: the Svelte app uses the same API paths as the original UI (e.g. `/game/{id}`), so if you use the dev server
+on a different origin you’ll want a proxy configuration. (Easy next step: add `server.proxy` to `vite.config.ts`.)
+
+#### Build `/ui2/` for serving via FastAPI
+
+This writes the production bundle into `app/static/ui2/dist/` (so the Python service can serve it at `/ui2/`):
+
+```bash
+cd app/static/ui2
+npm run build
+```
+
+Then run the API and open:
+
+- `http://localhost:8000/ui2/`
+
+You can compare against:
+
+- `http://localhost:8000/ui/`
 
 ## CI (GitHub Actions)
 
@@ -201,13 +262,16 @@ This repo has a required GitHub Actions workflow (`CI`) that runs on every push 
 
 **Checks that run (blocking):**
 
+### Backend
+
 - **Lint:** `ruff check .`
+- **Typecheck:** `mypy .`
 - **Tests:** `pytest` (unit + non-Ollama integration tests)
-- **Coverage:** generated via `pytest-cov`
-  - `coverage.xml` (Cobertura XML)
-  - `htmlcov/` (HTML report)
-  - both are uploaded as workflow artifacts
-  - total line coverage is also written into the workflow run summary
+
+### Frontend (`app/static/ui2`)
+
+- **Type check:** `npm run check` (svelte-check)
+- **Build:** `npm run build`
 
 ### Ollama/LLM integration tests in CI
 
@@ -241,40 +305,25 @@ Outputs:
 Note: install dev dependencies first:
 
 ```bash
-uv sync --extra dev
+uv sync --dev
 ```
 
-### Integration tests
+## Run all checks locally (CI equivalent)
 
-Integration tests that require Ollama are **env-gated** and will skip unless `OPENAI_BASE_URL` / `OPENAI_MODEL` are configured and reachable.
-
-#### Run Ollama-gated tests locally
-
-1) Start Ollama and make sure your model is pulled.
-2) Set env vars (or put them in `.env`). Example `.env`:
-   - `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`
-   - `OPENAI_MODEL=gpt-oss:20b`
-
-Then run:
+Backend:
 
 ```bash
-pytest
+uv sync --dev
+uv run ruff check .
+uv run pytest
 ```
 
-#### Run tests in “CI mode” locally (verify Ollama tests are skipped)
+Frontend:
 
 ```bash
-CI=1 pytest
+cd app/static/ui2
+npm ci
+npm run lint
+npm test
+npm run build
 ```
-
-#### Opt-in to loading `.env` even in CI mode
-
-If you *do* want to run Ollama integration tests in a CI-like environment, opt-in explicitly:
-
-```bash
-CI=1 DECEPTION_AI_LOAD_DOTENV_FOR_TESTS=1 pytest
-```
-
-## License
-
-This project is licensed under the MIT License — see [`LICENSE`](./LICENSE).
