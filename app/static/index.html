@@ -14,6 +14,7 @@
         --border: #25304a;
         --accent: #7aa2ff;
         --danger: #ff6b6b;
+        --info: #7cc7ff; /* witness */
       }
       html,
       body {
@@ -151,12 +152,40 @@
         border: 1px solid rgba(145, 164, 198, 0.25);
         color: var(--text);
       }
-      .tag[data-id] {
-        cursor: help;
-      }
+
+      /* Make selections much more obvious */
       .tag.selected {
-        background: rgba(122, 162, 255, 0.22);
-        border-color: rgba(122, 162, 255, 0.55);
+        background: rgba(122, 162, 255, 0.42);
+        border-color: rgba(122, 162, 255, 0.95);
+        box-shadow: 0 0 0 2px rgba(122, 162, 255, 0.18);
+        color: #ffffff;
+        font-weight: 650;
+      }
+
+      /* Role highlighting chips */
+      .roleTag {
+        display: inline-block;
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(145, 164, 198, 0.10);
+        border: 1px solid rgba(145, 164, 198, 0.25);
+        color: var(--text);
+        white-space: nowrap;
+      }
+      .roleTag.unknown {
+        color: var(--muted);
+        border-style: dashed;
+      }
+      .roleTag.danger {
+        background: rgba(255, 107, 107, 0.18);
+        border-color: rgba(255, 107, 107, 0.55);
+        color: #ffd2d2;
+      }
+      .roleTag.witness {
+        background: rgba(124, 199, 255, 0.16);
+        border-color: rgba(124, 199, 255, 0.45);
+        color: #d7f1ff;
       }
 
       .discussion {
@@ -658,10 +687,25 @@
         else if (canSeeMurdererRoles(pov) && (p.role === 'murderer' || p.role === 'accomplice')) roleText = formatRole(p.role);
 
         const display = p.display_name || p.player_id;
+
+        const roleCls = ['roleTag'];
+        if (roleText === 'unknown') roleCls.push('unknown');
+        if (p.role === 'murderer' || p.role === 'accomplice') {
+          // highlight these identities in red when the POV can know them
+          if (canSeeMurdererRoles(pov)) roleCls.push('danger');
+        }
+        if (p.role === 'witness') {
+          // witness highlight (FS always sees)
+          if (pov === 'fs') roleCls.push('witness');
+        }
+
         const header = el('header', {}, [
           el('div', {}, [
             el('div', { text: display, style: 'font-weight: 600' }),
-            el('div', { class: 'muted', text: `${p.player_id} · ${roleText}` }),
+            el('div', { class: 'muted' }, [
+              el('span', { text: `${p.player_id} · ` }),
+              el('span', { class: roleCls.join(' '), text: roleText }),
+            ]),
           ]),
           el('span', { class: 'pill', text: p.is_ai ? 'AI' : 'Human' }),
         ]);
