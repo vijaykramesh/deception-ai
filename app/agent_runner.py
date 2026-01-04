@@ -18,6 +18,9 @@ from app.contexts import make_base_player_context
 from app.core.context import PlayerContext, compose_context
 from app.roles import RoleName, make_role_context
 
+# Re-export for tests/monkeypatching and to keep run_game_agents_once logic clean.
+from app.agents.discussion_agent import propose_discussion_with_agent
+
 
 @dataclass(frozen=True, slots=True)
 class AgentRunnerConfig:
@@ -281,7 +284,54 @@ async def run_game_agents_once(*, r: redis.Redis, game_id: str, config: AgentRun
             return False
         return await run_agent_step(r=r, game_id=game_id, player_id=fs.player_id, config=config)
 
-    # In other phases (discussion/completed), do nothing for now.
+    if state.phase.value == "discussion":
+        # Discussion turns: if it's an AI player's turn, generate a discussion comment and submit it.
+        from app.assets.singleton import get_assets
+        from app.turn_processing.board_context import visible_board_context
+        from app.turn_processing.turns import current_turn_player_id
+
+        turn_player_id = current_turn_player_id(state=state)
+        turn_player = next((p for p in state.players if p.player_id == turn_player_id), None)
+        if turn_player is None or not turn_player.is_ai:
+            return False
+
+        # Compose base + player + role contexts.
+        base = make_base_player_context(system_prefix="")
+
+        board_txt = visible_board_context(state=state, viewer_player_id=turn_player_id, assets=get_assets())
+        player_ctx = PlayerContext(
+            player_id=turn_player.player_id,
+            display_name=turn_player.display_name or f"Seat {turn_player.seat}",
+            prompt=(
+                "It's your turn in the discussion. Contribute one helpful discussion point "
+                "(observation, question, suspicion, or connection between evidence)."
+            ),
+            asset_text=board_txt,
+        )
+
+        role_ctx = make_role_context(RoleName(turn_player.role))
+        ctx = compose_context(base=base, player=player_ctx, role=role_ctx)
+
+        agent = create_default_agent(name=f"discuss-{turn_player.player_id}")
+
+        comments = await propose_discussion_with_agent(
+            agent=agent,
+            ctx=ctx,
+            prompt=(
+                "Write your discussion contribution now. Output STRICT JSON: {\"response\": \"...\"}."
+            ),
+        )
+
+        await dispatch_action_async(
+            r=r,
+            game_id=UUID(game_id),
+            player_id=turn_player_id,
+            action="discuss",
+            payload={"player_id": turn_player_id, "comments": comments},
+        )
+        return True
+
+    # In other phases (completed), do nothing.
     return False
 
 

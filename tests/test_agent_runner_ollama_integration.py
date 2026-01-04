@@ -16,11 +16,13 @@ def _ollama_ready() -> bool:
 
 @pytest.mark.asyncio
 async def test_agent_runner_ollama_env_gated() -> None:
-    """Integration test: agent runner consumes setup prompts and uses LLM to progress setup.
+    """Integration test: agent runner consumes setup prompts and uses an LLM to progress setup.
 
-    Depending on timing and mailbox contents, a single `run_game_agents_once` call may:
-      - only process the murder pick (ending in setup_awaiting_fs_scene_pick), OR
-      - process both murder pick + FS scene pick (ending in discussion).
+    This test expects setup to progress in three discrete steps (one agent-run per step):
+      1) Murderer picks the solution -> phase becomes `setup_awaiting_fs_scene_pick`.
+      2) Forensic Scientist (FS) picks scene (location + cause) -> phase becomes
+         `setup_awaiting_fs_scene_bullets_pick`.
+      3) FS picks bullets -> phase becomes `discussion`.
 
     Required env vars (example for Ollama):
       - OPENAI_BASE_URL=http://127.0.0.1:11434/v1
