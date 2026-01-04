@@ -1,4 +1,4 @@
-name: CI
+name: ci
 
 on:
   push:
@@ -12,8 +12,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-lint:
-    name: lint, test (coverage)
+  ci:
+    name: ci
     runs-on: ubuntu-latest
 
     services:
