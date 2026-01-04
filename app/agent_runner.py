@@ -301,7 +301,7 @@ async def run_game_agents_once(*, r: redis.Redis, game_id: str, config: AgentRun
         board_txt = visible_board_context(state=state, viewer_player_id=turn_player_id, assets=get_assets())
         player_ctx = PlayerContext(
             player_id=turn_player.player_id,
-            display_name=turn_player.display_name or f"Seat {turn_player.seat}",
+            display_name=turn_player.display_name or turn_player.player_id,
             prompt=(
                 "It's your turn in the discussion. Contribute one helpful discussion point "
                 "(observation, question, suspicion, or connection between evidence)."
@@ -363,7 +363,7 @@ async def decide_and_pick_solution_via_llm(
     base = make_base_player_context(system_prefix="")
     player_ctx = PlayerContext(
         player_id=murderer.player_id,
-        display_name=f"Seat {murderer.seat} (Murderer)",
+        display_name=murderer.display_name or murderer.player_id,
         prompt=(
             "You are the Murderer. Choose the true Means of Murder and Key Evidence "
             "from the allowed IDs provided."
@@ -428,7 +428,7 @@ async def decide_and_pick_fs_scene_via_llm(
 
     player_ctx = PlayerContext(
         player_id=fs.player_id,
-        display_name=f"Seat {fs.seat} (Forensic Scientist)",
+        display_name=fs.display_name or fs.player_id,
         prompt=(
             "You are the Forensic Scientist. Choose the Location and Cause of Death "
             "from the allowed IDs provided." + extra
@@ -491,7 +491,7 @@ async def decide_and_pick_fs_scene_bullets_via_llm(
 
     player_ctx = PlayerContext(
         player_id=fs.player_id,
-        display_name=f"Seat {fs.seat} (Forensic Scientist)",
+        display_name=fs.display_name or fs.player_id,
         prompt=(
             "You are the Forensic Scientist. You must remain silent. "
             "Select one bullet option for each dealt Scene tile.\n\n"

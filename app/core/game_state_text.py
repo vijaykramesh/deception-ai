@@ -49,13 +49,13 @@ def _can_see_identities(*, pov: str) -> bool:
 
 
 def _format_player_cards(*, state: GameState, assets: GameAssets, pov: str) -> str:
-    """LLM-friendly, seat-grouped public-table section.
+    """LLM-friendly public-table section.
 
     Intended rule for prompts:
     - Everyone can see every player's cards (including their own).
       (Players still don't know which ones are selected for the solution.)
 
-    We keep an FS-specific header since the FS also sees hidden identities/scene setup.
+    We group deterministically by seat order, but we don't use seat numbers as the primary identifier.
     """
 
     pov = _normalize_pov(pov)
@@ -64,7 +64,7 @@ def _format_player_cards(*, state: GameState, assets: GameAssets, pov: str) -> s
     if not players:
         return ""
 
-    header = "PUBLIC TABLE (all hands visible; grouped by seat):" if pov != "fs" else "HANDS (FS can see all):"
+    header = "PUBLIC TABLE (all hands visible; ordered by seating):" if pov != "fs" else "HANDS (FS can see all):"
 
     lines: list[str] = [header]
     for p in players:
@@ -77,7 +77,7 @@ def _format_player_cards(*, state: GameState, assets: GameAssets, pov: str) -> s
             for cid in p.hand.clue_ids
         ]
         label = _player_label(p.display_name, p.player_id)
-        lines.append(f"- seat {p.seat}: {label}")
+        lines.append(f"- {label}")
         lines.append(f"  - Means: {means}")
         lines.append(f"  - Clues: {clues}")
 
@@ -121,41 +121,27 @@ def game_state_to_paragraph(
 
     # Roles / identities.
     if fs is not None:
-        sent.append(f"Forensic Scientist: {_player_label(fs.display_name, fs.player_id)} (seat {fs.seat}).")
+        sent.append(f"Forensic Scientist: {_player_label(fs.display_name, fs.player_id)}.")
 
     if _can_see_identities(pov=pov):
         if pov == "fs":
             if murderer is not None:
-                sent.append(
-                    f"Murderer: {_player_label(murderer.display_name, murderer.player_id)} (seat {murderer.seat})."
-                )
+                sent.append(f"Murderer: {_player_label(murderer.display_name, murderer.player_id)}.")
             if accomplice is not None:
-                sent.append(
-                    f"Accomplice: {_player_label(accomplice.display_name, accomplice.player_id)} (seat {accomplice.seat})."
-                )
+                sent.append(f"Accomplice: {_player_label(accomplice.display_name, accomplice.player_id)}.")
             if witness is not None:
-                sent.append(
-                    f"Witness: {_player_label(witness.display_name, witness.player_id)} (seat {witness.seat})."
-                )
+                sent.append(f"Witness: {_player_label(witness.display_name, witness.player_id)}.")
         elif pov == "witness":
             if murderer is not None:
-                sent.append(
-                    f"Murderer: {_player_label(murderer.display_name, murderer.player_id)} (seat {murderer.seat})."
-                )
+                sent.append(f"Murderer: {_player_label(murderer.display_name, murderer.player_id)}.")
             if accomplice is not None:
-                sent.append(
-                    f"Accomplice: {_player_label(accomplice.display_name, accomplice.player_id)} (seat {accomplice.seat})."
-                )
+                sent.append(f"Accomplice: {_player_label(accomplice.display_name, accomplice.player_id)}.")
         elif pov in {"murderer", "accomplice"}:
             # Murderer/accomplice know each other.
             if murderer is not None:
-                sent.append(
-                    f"Murderer: {_player_label(murderer.display_name, murderer.player_id)} (seat {murderer.seat})."
-                )
+                sent.append(f"Murderer: {_player_label(murderer.display_name, murderer.player_id)}.")
             if accomplice is not None:
-                sent.append(
-                    f"Accomplice: {_player_label(accomplice.display_name, accomplice.player_id)} (seat {accomplice.seat})."
-                )
+                sent.append(f"Accomplice: {_player_label(accomplice.display_name, accomplice.player_id)}.")
 
     # Murder solution.
     if _can_see_solution(pov=pov) and state.solution is not None and murderer is not None:

@@ -715,10 +715,7 @@
         const header = el('header', {}, [
           el('div', {}, [
             el('div', { text: display, style: 'font-weight: 600' }),
-            el('div', { class: 'muted' }, [
-              el('span', { text: `${p.player_id} · ` }),
-              el('span', { class: roleCls.join(' '), text: roleText }),
-            ]),
+            el('div', { class: 'muted' }, [el('span', { class: roleCls.join(' '), text: roleText })]),
           ]),
           el('span', { class: 'pill', text: p.is_ai ? 'AI' : 'Human' }),
         ]);
@@ -760,9 +757,12 @@
 
       function renderDiscussion(state, playerId) {
         const log = el('div', { class: 'log', id: 'log' });
+        const byId = new Map((state.players || []).map((p) => [p.player_id, p]));
         for (const m of state.discussion || []) {
+          const p = byId.get(m.player_id);
+          const name = p?.display_name || m.player_id;
           const meta = el('div', { class: 'meta' }, [
-            el('span', { text: m.player_id }),
+            el('span', { text: name }),
             el('span', { text: new Date(m.created_at).toLocaleString() }),
           ]);
           log.appendChild(el('div', { class: 'msg' }, [meta, el('div', { text: m.comments })]));

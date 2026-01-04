@@ -86,13 +86,13 @@ def test_visible_board_context_includes_public_table_excluding_viewer_hand() -> 
     )
 
     # Should include p2's public cards.
-    assert "PUBLIC TABLE (all hands visible; grouped by seat):" in ctx
-    assert "- seat 2: P2" in ctx
+    assert "PUBLIC TABLE (all hands visible; ordered by seating):" in ctx
+    assert "- P2" in ctx
     assert "  - Means: ['Belt']" in ctx
     assert "  - Clues: ['Glove']" in ctx
 
     # Should ALSO include p1's own cards (all hands are visible).
-    assert "- seat 1: P1" in ctx
+    assert "- P1" in ctx
     assert "  - Means: ['Rope']" in ctx
     assert "  - Clues: ['Fiber']" in ctx
 
