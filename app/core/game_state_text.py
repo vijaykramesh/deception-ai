@@ -19,21 +19,87 @@ def _sorted_players(state: GameState):
     return sorted(state.players, key=lambda p: p.seat)
 
 
+def _normalize_pov(pov: str) -> str:
+    """Normalize POV values to the supported set.
+
+    Anything unknown is treated as investigator for safety (most restrictive).
+    """
+
+    allowed = {"fs", "murderer", "accomplice", "witness", "investigator"}
+    return pov if pov in allowed else "investigator"
+
+
 def _can_see_solution(*, pov: str) -> bool:
+    pov = _normalize_pov(pov)
     return pov in {"fs", "murderer", "accomplice"}
 
 
 def _can_see_identities(*, pov: str) -> bool:
-    # witness sees murderer+accomplice identities (not solution)
-    return pov in {"fs", "murderer", "witness", "accomplice"}
+    """Whether the POV should see role identities.
+
+    Rules:
+    - FS sees all roles.
+    - Witness sees murderer + accomplice identities (not the solution).
+    - Murderer and accomplice know each other.
+    - Investigators do not see any hidden identities.
+    """
+
+    pov = _normalize_pov(pov)
+    return pov in {"fs", "witness", "murderer", "accomplice"}
 
 
-def game_state_to_paragraph(*, state: GameState, assets: GameAssets, pov: str) -> str:
+def _format_player_cards(*, state: GameState, assets: GameAssets, pov: str) -> str:
+    """LLM-friendly public-table section.
+
+    Intended rule for prompts:
+    - Everyone can see every player's cards (including their own).
+      (Players still don't know which ones are selected for the solution.)
+
+    We group deterministically by seat order, but we don't use seat numbers as the primary identifier.
+    """
+
+    pov = _normalize_pov(pov)
+    players = _sorted_players(state)
+
+    if not players:
+        return ""
+
+    header = "PUBLIC TABLE (all hands visible; ordered by seating):" if pov != "fs" else "HANDS (FS can see all):"
+
+    lines: list[str] = [header]
+    for p in players:
+        means = [
+            assets.means_cards.get(mid).name if assets.means_cards.get(mid) else mid
+            for mid in p.hand.means_ids
+        ]
+        clues = [
+            assets.clue_cards.get(cid).name if assets.clue_cards.get(cid) else cid
+            for cid in p.hand.clue_ids
+        ]
+        label = _player_label(p.display_name, p.player_id)
+        lines.append(f"- {label}")
+        lines.append(f"  - Means: {means}")
+        lines.append(f"  - Clues: {clues}")
+
+    return "\n".join(lines).strip()
+
+
+def game_state_to_paragraph(
+    *,
+    state: GameState,
+    assets: GameAssets,
+    pov: str,
+    viewer_player_id: str | None = None,
+) -> str:
     """Deterministic single-paragraph summary with POV-based redaction.
 
     POV values match UI toggles: fs, murderer, accomplice, witness, investigator.
+
+    Note: we accept `viewer_player_id` for compatibility, but prompts use the rule
+    that all hands are visible to all players (including their own).
     """
 
+    pov = _normalize_pov(pov)
     players = _sorted_players(state)
 
     fs = next((p for p in players if p.role == "forensic_scientist"), None)
@@ -55,15 +121,27 @@ def game_state_to_paragraph(*, state: GameState, assets: GameAssets, pov: str) -
 
     # Roles / identities.
     if fs is not None:
-        sent.append(f"Forensic Scientist: {_player_label(fs.display_name, fs.player_id)} (seat {fs.seat}).")
+        sent.append(f"Forensic Scientist: {_player_label(fs.display_name, fs.player_id)}.")
 
     if _can_see_identities(pov=pov):
-        if murderer is not None:
-            sent.append(f"Murderer: {_player_label(murderer.display_name, murderer.player_id)} (seat {murderer.seat}).")
-        if accomplice is not None:
-            sent.append(f"Accomplice: {_player_label(accomplice.display_name, accomplice.player_id)} (seat {accomplice.seat}).")
-        if witness is not None and pov == "fs":
-            sent.append(f"Witness: {_player_label(witness.display_name, witness.player_id)} (seat {witness.seat}).")
+        if pov == "fs":
+            if murderer is not None:
+                sent.append(f"Murderer: {_player_label(murderer.display_name, murderer.player_id)}.")
+            if accomplice is not None:
+                sent.append(f"Accomplice: {_player_label(accomplice.display_name, accomplice.player_id)}.")
+            if witness is not None:
+                sent.append(f"Witness: {_player_label(witness.display_name, witness.player_id)}.")
+        elif pov == "witness":
+            if murderer is not None:
+                sent.append(f"Murderer: {_player_label(murderer.display_name, murderer.player_id)}.")
+            if accomplice is not None:
+                sent.append(f"Accomplice: {_player_label(accomplice.display_name, accomplice.player_id)}.")
+        elif pov in {"murderer", "accomplice"}:
+            # Murderer/accomplice know each other.
+            if murderer is not None:
+                sent.append(f"Murderer: {_player_label(murderer.display_name, murderer.player_id)}.")
+            if accomplice is not None:
+                sent.append(f"Accomplice: {_player_label(accomplice.display_name, accomplice.player_id)}.")
 
     # Murder solution.
     if _can_see_solution(pov=pov) and state.solution is not None and murderer is not None:
@@ -71,21 +149,10 @@ def game_state_to_paragraph(*, state: GameState, assets: GameAssets, pov: str) -
         clue_card = assets.clue_cards.get(state.solution.clue_id)
         means_txt = means_card.name if means_card is not None else state.solution.means_id
         clue_txt = clue_card.name if clue_card is not None else state.solution.clue_id
-        sent.append(
-            f"Murder solution (secret): the murderer chose Means '{means_txt}' and Evidence '{clue_txt}'."
-        )
+        sent.append(f"Murder solution (secret): the murderer chose Means '{means_txt}' and Evidence '{clue_txt}'.")
 
-    # Full hands.
-    # Game UI rule: the FS has access to all hands for guiding; for other POVs, only show their own hand.
-    if pov == "fs":
-        chunks = []
-        for p in players:
-            means = [assets.means_cards.get(mid).name if assets.means_cards.get(mid) else mid for mid in p.hand.means_ids]
-            clues = [assets.clue_cards.get(cid).name if assets.clue_cards.get(cid) else cid for cid in p.hand.clue_ids]
-            chunks.append(
-                f"{_player_label(p.display_name, p.player_id)}(seat {p.seat}): Means={means}; Clues={clues}."
-            )
-        sent.append("Hands: " + " ".join(chunks))
+    public_table = _format_player_cards(state=state, assets=assets, pov=pov)
+    if public_table:
+        sent.append(public_table)
 
     return " ".join(sent)
-

@@ -1,6 +1,7 @@
 You are the Murderer.
 
-You know the chosen Means of Murder and Key Evidence.
+You know the chosen Means of Murder and Key Evidence.  The other players do not know the solution, make sure not to reveal it.
+Do not discuss any of the means or clue cards in your hand (esp the solution!) unless you need to dissuade others of your guilt.
 
 Your goal is to prevent investigators from confidently identifying both.
 You should behave like a normal investigator while subtly expanding ambiguity.

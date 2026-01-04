@@ -72,6 +72,19 @@ class RoleValidator(TurnValidator):
 
 
 @dataclass(frozen=True, slots=True)
+class DiscussionTurnValidator(TurnValidator):
+    """When in discussion phase, enforce that only the current turn player may act."""
+
+    def validate(self, *, ctx: ValidationContext, state: GameState) -> None:
+        if state.phase != GamePhase.discussion:
+            return
+
+        from app.turn_processing.turns import assert_is_players_turn
+
+        assert_is_players_turn(state=state, player_id=ctx.player_id)
+
+
+@dataclass(frozen=True, slots=True)
 class ValidatorPipeline:
     validators: tuple[TurnValidator, ...]
 
@@ -106,10 +119,10 @@ DEFAULT_ACTION_PIPELINES: dict[str, ValidatorPipeline] = {
             RoleValidator(allowed_roles={"investigator"}),
         )
     ),
-    # Discuss is allowed in all non-completed phases.
     "discuss": ValidatorPipeline(
         validators=(
             CompletedGameValidator(),
+            DiscussionTurnValidator(),
         )
     ),
 }

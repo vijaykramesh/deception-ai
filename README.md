@@ -21,10 +21,23 @@ This repo is intentionally service-first: the core focus is a clean control flow
     - Phase: `setup_awaiting_fs_scene_pick` → `discussion`
 
 - **Discussion + solve (basic scaffolding)**
-  - Anyone can add discussion comments (until completed).
+  - Phase `discussion` is a lightweight “talk & deduce” loop.
+  - Players add chronological discussion comments.
+    - Turn order is derived from comment count (each comment advances the turn).
   - Investigators can submit a solve guess during discussion.
     - Wrong guess consumes their badge.
     - Correct guess ends the game: phase → `completed`.
+
+### Web UI
+
+A tiny built-in UI is served by the API (no separate frontend build step). It’s intentionally minimal, but it’s good for driving the state machine and debugging POV/redaction.
+
+- Open the UI at: `/ui/`
+- The gameplay page includes a header (`Deception: AI`) with a **POV selector** (view settings live in the header).
+- Discussion messages are posted as the **Forensic Scientist** (or fall back to the first player).
+- **Run AI agents once** button:
+  - Calls `POST /games/{game_id}/agents/run_once`
+  - Shows a pressed/“running” state while the request is in-flight, and un-presses when the backend responds.
 
 ### Service + architecture
 
@@ -64,6 +77,27 @@ This repo is intentionally service-first: the core focus is a clean control flow
     - `prompt_murder_pick`
     - `prompt_fs_scene_pick`
     - `state_changed`
+
+### Board summaries, POV, and redaction
+
+The system generates an LLM-friendly “board context” string for agents each time they act.
+
+- **Public table formatting:** hands are rendered as a seat-grouped table (`seat 0`, `seat 1`, …) to be easy for LLMs to scan.
+  - Importantly: in Deception, *hands are public*. Everyone can see everyone’s cards (including their own) — what’s hidden is which two cards were selected as the solution.
+
+- **POV / redaction rules:** board context is scoped by role (“POV”) so agents don’t see hidden information they shouldn’t.
+  - Supported POV values: `fs`, `murderer`, `accomplice`, `witness`, `investigator`.
+  - **Solution is visible to:** Forensic Scientist, Murderer, Accomplice.
+  - **Role identities are visible to:**
+    - FS: all roles
+    - Witness: murderer + accomplice identities (but not the solution)
+    - Murderer/Accomplice: each other
+    - Investigators: none
+  - Unknown POV is treated as `investigator` (most restrictive).
+
+- **Prompt safety invariant:** the prompt builder uses a header string:
+  - `BOARD CONTEXT (visible to you):`
+  - If you ever see unredacted text like “Murderer: …” or “Murder solution (secret): …” while viewing as an investigator, it’s a bug.
 
 ### AI agent integration
 

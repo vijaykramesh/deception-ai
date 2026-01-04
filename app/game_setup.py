@@ -87,9 +87,9 @@ def _random_ai_name(*, rng: random.Random, taken: set[str]) -> str:
 
     # Extremely unlikely fallback.
     idx = 1
-    while f"AI {idx}" in taken:
+    while f"Player {idx}" in taken:
         idx += 1
-    fallback = f"AI {idx}"
+    fallback = f"Player {idx}"
     taken.add(fallback)
     return fallback
 
@@ -116,10 +116,9 @@ def build_initial_players(
     taken_names: set[str] = set()
     for idx, p in enumerate(base):
         p.role = roles[idx]
-        if p.is_ai:
-            p.display_name = _random_ai_name(rng=rng, taken=taken_names)
-        else:
-            p.display_name = p.player_id
+        # Give every player a real-looking unique display name.
+        # (UI/prompt rendering should prefer display_name everywhere.)
+        p.display_name = _random_ai_name(rng=rng, taken=taken_names)
 
     # Keep state.players ordered by seat so "clockwise" / UI layout is stable.
     base.sort(key=lambda p: p.seat)
@@ -187,7 +186,7 @@ async def choose_solution_from_murderer_via_llm(
     base = make_base_player_context(system_prefix="")
     player_ctx = PlayerContext(
         player_id=murderer.player_id,
-        display_name=f"Seat {murderer.seat} (Murderer)",
+        display_name=murderer.display_name or murderer.player_id,
         prompt="You are an AI player. Your cards are visible to others, but you cannot see them."
         " For this setup step, you are allowed to reason over the card IDs listed in the message.",
     )

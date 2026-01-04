@@ -47,6 +47,19 @@
         font-weight: 600;
       }
 
+      button:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
+
+      /* Pressed/running state for async actions */
+      button.pressed {
+        background: rgba(122, 162, 255, 0.22);
+        border-color: rgba(122, 162, 255, 0.65);
+        box-shadow: inset 0 0 0 2px rgba(122, 162, 255, 0.18);
+        color: var(--text);
+      }
+
       .wrap {
         max-width: 1400px;
         margin: 0 auto;
@@ -702,10 +715,7 @@
         const header = el('header', {}, [
           el('div', {}, [
             el('div', { text: display, style: 'font-weight: 600' }),
-            el('div', { class: 'muted' }, [
-              el('span', { text: `${p.player_id} · ` }),
-              el('span', { class: roleCls.join(' '), text: roleText }),
-            ]),
+            el('div', { class: 'muted' }, [el('span', { class: roleCls.join(' '), text: roleText })]),
           ]),
           el('span', { class: 'pill', text: p.is_ai ? 'AI' : 'Human' }),
         ]);
@@ -747,9 +757,12 @@
 
       function renderDiscussion(state, playerId) {
         const log = el('div', { class: 'log', id: 'log' });
+        const byId = new Map((state.players || []).map((p) => [p.player_id, p]));
         for (const m of state.discussion || []) {
+          const p = byId.get(m.player_id);
+          const name = p?.display_name || m.player_id;
           const meta = el('div', { class: 'meta' }, [
-            el('span', { text: m.player_id }),
+            el('span', { text: name }),
             el('span', { text: new Date(m.created_at).toLocaleString() }),
           ]);
           log.appendChild(el('div', { class: 'msg' }, [meta, el('div', { text: m.comments })]));
@@ -789,51 +802,80 @@
       async function renderGame(gameId) {
         app.innerHTML = '';
 
+        // Local UI state for this view.
+        let isRunAgentsPending = false;
+        let runAgentsBtn = null;
+
+        function syncRunAgentsBtn() {
+          if (!runAgentsBtn) return;
+          runAgentsBtn.disabled = isRunAgentsPending;
+          runAgentsBtn.classList.toggle('pressed', isRunAgentsPending);
+          runAgentsBtn.setAttribute('aria-pressed', String(isRunAgentsPending));
+          runAgentsBtn.setAttribute('aria-busy', String(isRunAgentsPending));
+          runAgentsBtn.textContent = isRunAgentsPending ? 'Running AI agents…' : 'Run AI agents once';
+        }
+
+        // View settings: POV selector (moved into header)
+        const povSelect = (() => {
+          const sel = el('select', { id: 'povSelect', style: 'min-width: 220px' }, [
+            el('option', { value: 'fs', text: 'Forensic Scientist' }),
+            el('option', { value: 'murderer', text: 'Murderer' }),
+            el('option', { value: 'witness', text: 'Witness' }),
+            el('option', { value: 'investigator', text: 'Investigator' }),
+          ]);
+          sel.value = getPov();
+          sel.addEventListener('change', () => {
+            setPov(sel.value);
+            window.dispatchEvent(new CustomEvent('deception:pov_changed'));
+          });
+          return sel;
+        })();
+
+        // Gameplay page header
+        const header = el('div', { class: 'card', style: 'margin-bottom: 12px; padding: 12px 14px' }, [
+          el('div', { class: 'row' }, [
+            el('div', { style: 'font-size: 18px; font-weight: 750', text: 'Deception: AI' }),
+            el('div', { style: 'flex: 1' }),
+            el('label', { class: 'muted', text: 'POV' }),
+            povSelect,
+          ]),
+          el('div', { id: 'gameErr', class: 'error', style: 'margin-top: 10px' }),
+        ]);
+
         const top = el('div', { class: 'row', style: 'margin-bottom: 12px' }, [
           el('button', { text: '← Home', onclick: () => navigate('#/') }),
           el('div', { class: 'muted', text: 'Game:' }),
           el('div', { style: 'font-weight: 600', text: gameId }),
           el('div', { style: 'flex: 1' }),
-          el('button', {
-            text: 'Run AI agents once',
-            onclick: async () => {
-              const err = qs('#gameErr');
-              err.textContent = '';
-              try {
-                await api(`/games/${gameId}/agents/run_once?block_ms=10&count=10`, { method: 'POST' });
-              } catch (e) {
-                err.textContent = e.message;
-              }
-            },
-          }),
-        ]);
+          (() => {
+            runAgentsBtn = el('button', {
+              text: 'Run AI agents once',
+              onclick: async () => {
+                // Guard against double clicks.
+                if (isRunAgentsPending) return;
 
-        const controls = el('div', { class: 'card', style: 'margin-bottom: 12px' }, [
-          el('div', { class: 'title' }, [
-            el('h1', { text: 'View settings' }),
-            el('small', { class: 'muted', text: 'Perspective toggle' }),
-          ]),
-          el('div', { class: 'row', style: 'margin-top: 10px' }, [
-            el('label', { class: 'muted', text: 'POV' }),
-            (() => {
-              const sel = el('select', { id: 'povSelect', style: 'min-width: 220px' }, [
-                el('option', { value: 'fs', text: 'Forensic Scientist' }),
-                el('option', { value: 'murderer', text: 'Murderer' }),
-                el('option', { value: 'witness', text: 'Witness' }),
-                el('option', { value: 'investigator', text: 'Investigator' }),
-              ]);
-              sel.value = getPov();
-              sel.addEventListener('change', () => {
-                setPov(sel.value);
-                window.dispatchEvent(new CustomEvent('deception:pov_changed'));
-              });
-              return sel;
-            })(),
-            el('label', { class: 'muted', text: 'Post as player_id' }),
-            el('input', { id: 'postAs', placeholder: 'e.g. p1', style: 'min-width: 160px' }),
-            el('span', { class: 'muted', text: '(must match a player_id in state)' }),
-          ]),
-          el('div', { id: 'gameErr', class: 'error', style: 'margin-top: 10px' }),
+                const err = qs('#gameErr');
+                err.textContent = '';
+
+                isRunAgentsPending = true;
+                syncRunAgentsBtn();
+
+                try {
+                  await api(`/games/${gameId}/agents/run_once?block_ms=10&count=10`, { method: 'POST' });
+                } catch (e) {
+                  err.textContent = e.message;
+                } finally {
+                  // If the view is still mounted, clear the pressed state.
+                  // (Rerenders from websocket/poll will also clear it.)
+                  isRunAgentsPending = false;
+                  syncRunAgentsBtn();
+                }
+              },
+            });
+            runAgentsBtn.setAttribute('aria-pressed', 'false');
+            runAgentsBtn.setAttribute('aria-busy', 'false');
+            return runAgentsBtn;
+          })(),
         ]);
 
         const board = el('div', { class: 'board' }, [
@@ -841,8 +883,8 @@
           el('div', { class: 'rightCol', id: 'playersPanel' }),
         ]);
 
+        app.appendChild(header);
         app.appendChild(top);
-        app.appendChild(controls);
         app.appendChild(board);
 
         let state;
@@ -862,12 +904,18 @@
 
         const fsDefault =
           state.players.find((p) => p.role === 'forensic_scientist')?.player_id || state.players[0]?.player_id || 'p1';
-        qs('#postAs').value = fsDefault;
 
         function rerender(newState) {
           state = newState;
 
-          const playerId = qs('#postAs').value.trim() || fsDefault;
+          // Any successful update means we're no longer waiting on the run-once call.
+          if (isRunAgentsPending) {
+            isRunAgentsPending = false;
+            syncRunAgentsBtn();
+          }
+
+          // With “Post as player_id” removed, default to FS (or first player).
+          const playerId = fsDefault;
 
           const fsPanel = qs('#fsPanel');
           if (fsPanel) {
