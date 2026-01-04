@@ -2,6 +2,10 @@
 
 Deception: *Murder in Hong Kong* — built as a service where multiple AI agents and human players can play together.
 
+<a href="./screenshot.png">
+  <img src="./screenshot.png" alt="Deception AI screenshot" width="900" />
+</a>
+
 This repo is intentionally service-first: the core focus is a clean control flow for turns/actions, persistent state, and an architecture that supports **humans + agents going through the same API surface**.
 
 ## What it currently does
