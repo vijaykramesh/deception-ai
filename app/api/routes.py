@@ -17,6 +17,7 @@ from app.api.models import (
     MurderPickRequest,
     SolveRequest,
     GenericActionRequest,
+    GenericFsSceneBulletsActionRequest,
 )
 from app.game_store import create_game, get_game, list_games
 from app.websocket_hub import hub
@@ -167,6 +168,29 @@ async def fs_scene_pick_route(
             player_id=player_id,
             action="fs_scene",
             payload={"player_id": player_id, "location": payload.location, "cause": payload.cause},
+        )
+        state = result.state
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
+
+    await hub.broadcast(str(game_id), {"type": "game_updated", "game_id": str(game_id)})
+    return state
+
+
+@router.post("/game/{game_id}/player/{player_id}/fs_scene_bullets", response_model=GameState)
+async def fs_scene_bullets_pick_route(
+    game_id: UUID,
+    player_id: str,
+    payload: GenericFsSceneBulletsActionRequest,
+    r: redis.Redis = Depends(get_redis),
+) -> GameState:
+    try:
+        result = await dispatch_action_async(
+            r=r,
+            game_id=game_id,
+            player_id=player_id,
+            action="fs_scene_bullets",
+            payload={"player_id": player_id, "picks": payload.picks},
         )
         state = result.state
     except ValueError as e:

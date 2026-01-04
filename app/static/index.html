@@ -14,6 +14,7 @@
         --border: #25304a;
         --accent: #7aa2ff;
         --danger: #ff6b6b;
+        --info: #7cc7ff; /* witness */
       }
       html,
       body {
@@ -83,160 +84,33 @@
         color: var(--muted);
       }
 
-      /* Table (square border) */
-      .tableWrap {
-        position: relative;
-        height: 1080px;
-      }
-
-      .table {
-        position: relative;
-        height: 1280px;
-        border-radius: 16px;
-        border: 1px solid rgba(37, 48, 74, 0.55);
-        background: radial-gradient(ellipse at center, rgba(122, 162, 255, 0.06), rgba(0, 0, 0, 0) 62%);
-        overflow: hidden;
-
-        /* spacing around the center panel */
-        --gap: 14px;
-        --seat-w: 240px;
-        --seat-fs-w: 280px;
-
-        /* center panel size */
-        --center-w: 640px;
-        --center-h: 620px;
-      }
-
-      /* Base edge positioning (was missing, causing everything to stack) */
-      .edge {
-        position: absolute;
-        z-index: 2;
-        display: flex;
+      /* New layout requested */
+      .board {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
         gap: 12px;
-        align-items: center;
-        justify-content: center;
-        pointer-events: none; /* seats still clickable? we'll re-enable on seat */
+        align-items: start;
       }
-      .edge .seat {
-        pointer-events: auto;
+      .leftCol {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 12px;
+        min-height: 720px;
       }
-
-      .edge.top {
-        left: 12px;
-        right: 12px;
-        top: 10px;
-      }
-      .edge.bottom {
-        left: 12px;
-        right: 12px;
-        bottom: 10px;
-      }
-      .edge.left {
-        left: 10px;
-        top: 10px;
-        bottom: 10px;
-        flex-direction: column;
-      }
-      .edge.right {
-        right: 10px;
-        top: 10px;
-        bottom: 10px;
-        flex-direction: column;
+      .rightCol {
+        min-height: 720px;
+        max-height: 80vh;
+        overflow: auto;
       }
 
-      /* Slot containers (8 positions around the center) */
-      .slot {
-        position: absolute;
-        z-index: 2;
-        width: var(--seat-w);
-      }
-      .slot.fs {
-        width: var(--seat-fs-w);
-      }
-
-      /* Center panel centered for desktop */
-      .center {
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
-        width: var(--center-w);
-        max-width: calc(100% - 2 * (var(--seat-w) + 30px));
-        z-index: 3;
-      }
-
-      /* Compute slot positions from center geometry */
-      .slot.bottomMid {
-        left: 50%;
-        top: calc(50% + (var(--center-h) / 2) + var(--gap));
-        transform: translateX(-50%);
-      }
-      .slot.bottomLeft {
-        left: calc(50% - (var(--center-w) / 2) - var(--gap) - var(--seat-w));
-        top: calc(50% + (var(--center-h) / 2) + var(--gap));
-      }
-      .slot.midLeft {
-        left: calc(50% - (var(--center-w) / 2) - var(--gap) - var(--seat-w));
-        top: 50%;
-        transform: translateY(-50%);
-      }
-      .slot.topLeft {
-        left: calc(50% - (var(--center-w) / 2) - var(--gap) - var(--seat-w));
-        top: calc(50% - (var(--center-h) / 2) - var(--gap) - 240px);
-      }
-      .slot.midTop {
-        left: 50%;
-        top: calc(50% - (var(--center-h) / 2) - var(--gap) - 240px);
-        transform: translateX(-50%);
-      }
-      .slot.topRight {
-        left: calc(50% + (var(--center-w) / 2) + var(--gap));
-        top: calc(50% - (var(--center-h) / 2) - var(--gap) - 240px);
-      }
-      .slot.midRight {
-        left: calc(50% + (var(--center-w) / 2) + var(--gap));
-        top: 50%;
-        transform: translateY(-50%);
-      }
-      .slot.bottomRight {
-        left: calc(50% + (var(--center-w) / 2) + var(--gap));
-        top: calc(50% + (var(--center-h) / 2) + var(--gap));
-      }
-
-      .seat {
-        width: var(--seat-w);
-      }
-      .seat.fs {
-        width: var(--seat-fs-w);
-      }
-
-      /* Mobile: stack */
       @media (max-width: 980px) {
-        .tableWrap {
-          height: auto;
+        .board {
+          grid-template-columns: 1fr;
         }
-        .table {
-          height: auto;
-          background: transparent;
-          border: none;
-          overflow: visible;
-        }
-        .edge,
-        .slot {
-          position: static;
-          width: auto;
-          transform: none;
-          display: block;
-        }
-        .center {
-          position: static;
-          transform: none;
-          width: auto;
-          max-width: none;
-          margin: 12px 0;
-        }
-        .seat {
-          width: auto;
+        .leftCol,
+        .rightCol {
+          min-height: auto;
+          max-height: none;
         }
       }
 
@@ -269,6 +143,7 @@
         gap: 8px;
         flex-wrap: wrap;
       }
+
       .tag {
         font-size: 12px;
         padding: 2px 8px;
@@ -277,8 +152,40 @@
         border: 1px solid rgba(145, 164, 198, 0.25);
         color: var(--text);
       }
-      .tag[data-id] {
-        cursor: help;
+
+      /* Make selections much more obvious */
+      .tag.selected {
+        background: rgba(122, 162, 255, 0.42);
+        border-color: rgba(122, 162, 255, 0.95);
+        box-shadow: 0 0 0 2px rgba(122, 162, 255, 0.18);
+        color: #ffffff;
+        font-weight: 650;
+      }
+
+      /* Role highlighting chips */
+      .roleTag {
+        display: inline-block;
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(145, 164, 198, 0.10);
+        border: 1px solid rgba(145, 164, 198, 0.25);
+        color: var(--text);
+        white-space: nowrap;
+      }
+      .roleTag.unknown {
+        color: var(--muted);
+        border-style: dashed;
+      }
+      .roleTag.danger {
+        background: rgba(255, 107, 107, 0.18);
+        border-color: rgba(255, 107, 107, 0.55);
+        color: #ffd2d2;
+      }
+      .roleTag.witness {
+        background: rgba(124, 199, 255, 0.16);
+        border-color: rgba(124, 199, 255, 0.45);
+        color: #d7f1ff;
       }
 
       .discussion {
@@ -319,37 +226,7 @@
         resize: vertical;
       }
 
-      /* Role reveal / highlights */
-      .roleTag {
-        display: inline-block;
-        font-size: 12px;
-        padding: 2px 8px;
-        border-radius: 999px;
-        background: rgba(145, 164, 198, 0.10);
-        border: 1px solid rgba(145, 164, 198, 0.25);
-        color: var(--text);
-        white-space: nowrap;
-      }
-      .roleTag.unknown {
-        color: var(--muted);
-        border-style: dashed;
-      }
-      .roleTag.danger {
-        background: rgba(255, 107, 107, 0.14);
-        border-color: rgba(255, 107, 107, 0.35);
-        color: #ffd2d2;
-      }
-      .roleTag.success {
-        background: rgba(90, 255, 170, 0.12);
-        border-color: rgba(90, 255, 170, 0.30);
-        color: #d6ffea;
-      }
-      .tag.selected {
-        background: rgba(122, 162, 255, 0.22);
-        border-color: rgba(122, 162, 255, 0.55);
-      }
-
-      /* Embedded scene picker (FS card) */
+      /* Embedded scene picker + display */
       .scenePicker {
         display: grid;
         grid-template-columns: 1fr;
@@ -369,6 +246,16 @@
       .scenePicker .tagBtn.selected {
         background: rgba(122, 162, 255, 0.25);
         border-color: rgba(122, 162, 255, 0.8);
+      }
+
+      .sceneCards {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .sceneCard {
+        background: rgba(0, 0, 0, 0.12);
       }
     </style>
   </head>
@@ -405,13 +292,39 @@
         });
         if (!res.ok) {
           const text = await res.text();
-          throw new Error(text || ('HTTP ' + res.status));
+          throw new Error(text || 'HTTP ' + res.status);
         }
         return res.json();
       }
 
       function formatRole(role) {
         return role.replaceAll('_', ' ');
+      }
+
+      // POV (view perspective)
+      function povLabel(pov) {
+        if (pov === 'fs') return 'Forensic Scientist';
+        if (pov === 'murderer') return 'Murderer';
+        if (pov === 'witness') return 'Witness';
+        if (pov === 'investigator') return 'Investigator';
+        return 'Forensic Scientist';
+      }
+
+      function getPov() {
+        return (window.__POV__ || localStorage.getItem('deception:pov') || 'fs');
+      }
+
+      function setPov(pov) {
+        window.__POV__ = pov;
+        localStorage.setItem('deception:pov', pov);
+      }
+
+      function canSeeMurdererRoles(pov) {
+        return pov === 'fs' || pov === 'murderer' || pov === 'witness';
+      }
+
+      function canSeeMurderSelections(pov) {
+        return pov === 'fs' || pov === 'murderer' || pov === 'accomplice';
       }
 
       function route() {
@@ -490,10 +403,11 @@
 
       async function loadCardNameMaps() {
         const assetsRoot = '/ui-assets';
-        const [meansCsv, clueCsv, lcdCsv] = await Promise.all([
+        const [meansCsv, clueCsv, lcdCsv, sceneCsv] = await Promise.all([
           fetch(assetsRoot + '/means_cards.csv').then((r) => r.text()),
           fetch(assetsRoot + '/clue_cards.csv').then((r) => r.text()),
           fetch(assetsRoot + '/location_and_cause_of_death_tiles.csv').then((r) => r.text()),
+          fetch(assetsRoot + '/scene_tiles.csv').then((r) => r.text()),
         ]);
 
         function parseCsv(text) {
@@ -511,7 +425,7 @@
           return out;
         }
 
-        function parseLocationCauseCsv(text) {
+        function parseTileOptionsCsv(text) {
           // Expected columns: id,tile,option (with optional quoting)
           const lines = text.split(/\r?\n/).filter((l) => l.trim().length);
           const byId = new Map();
@@ -544,10 +458,11 @@
             const id = cols[0];
             const tile = cols[1];
             const option = cols[2];
-            if (!id || !tile || !option) continue;
-            byId.set(id, { tile, option });
+            if (!tile || !option) continue;
+
+            if (id) byId.set(id, { tile, option });
             if (!optionsByTile.has(tile)) optionsByTile.set(tile, []);
-            optionsByTile.get(tile).push({ id, option });
+            optionsByTile.get(tile).push({ id: id || option, option });
           }
 
           for (const [tile, opts] of optionsByTile.entries()) {
@@ -561,66 +476,37 @@
         return {
           means: parseCsv(meansCsv),
           clues: parseCsv(clueCsv),
-          lcd: parseLocationCauseCsv(lcdCsv),
+          lcd: parseTileOptionsCsv(lcdCsv),
+          scene: parseTileOptionsCsv(sceneCsv),
         };
       }
 
-      function povLabel(pov) {
-        if (pov === 'fs') return 'Forensic Scientist';
-        if (pov === 'murderer') return 'Murderer';
-        if (pov === 'witness') return 'Witness';
-        if (pov === 'investigator') return 'Investigator';
-        return 'Forensic Scientist';
-      }
-
-      function getPov() {
-        return (window.__POV__ || localStorage.getItem('deception:pov') || 'fs');
-      }
-
-      function setPov(pov) {
-        window.__POV__ = pov;
-        localStorage.setItem('deception:pov', pov);
-      }
-
-      function canSeeAllRoles(pov) {
-        return pov === 'fs';
-      }
-
-      function canSeeMurderSelections(pov) {
-        return pov === 'fs' || pov === 'murderer' || pov === 'accomplice';
-      }
-
-      function canSeeMurdererAccompliceHighlight(pov) {
-        return pov === 'fs' || pov === 'murderer' || pov === 'witness';
-      }
-
-      function roleBadgeFor(playerRole, pov, isFs) {
-        // FS role is always shown.
-        if (isFs) return { text: 'forensic scientist', cls: '' };
-
-        if (canSeeAllRoles(pov)) return { text: playerRole.replaceAll('_', ' '), cls: '' };
-
-        // Murderer POV: show murderer + accomplice roles, but keep others unknown.
-        if (pov === 'murderer') {
-          if (playerRole === 'murderer' || playerRole === 'accomplice') {
-            return { text: playerRole.replaceAll('_', ' '), cls: 'danger' };
-          }
-          return { text: 'unknown', cls: 'unknown' };
+      function chipsRow(opts, selectedIdOrOption, { clickable = false, onPick = null } = {}) {
+        const row = el('div', { class: 'tags' });
+        if (!opts || !opts.length) {
+          row.appendChild(el('span', { class: 'muted', text: '—' }));
+          return row;
         }
+        for (const o of opts) {
+          const cls = ['tag'];
+          const match = selectedIdOrOption && (o.id === selectedIdOrOption || o.option === selectedIdOrOption);
+          if (match) cls.push('selected');
 
-        // Witness POV: show identities (murderer/accomplice) but not solution.
-        if (pov === 'witness') {
-          if (playerRole === 'murderer' || playerRole === 'accomplice') {
-            return { text: playerRole.replaceAll('_', ' '), cls: 'danger' };
+          if (clickable) {
+            cls.push('tagBtn');
+            row.appendChild(
+              el('button', {
+                class: cls.join(' '),
+                title: o.id,
+                text: o.option,
+                onclick: () => onPick && onPick(o.id, o.option),
+              }),
+            );
+          } else {
+            row.appendChild(el('span', { class: cls.join(' '), title: o.id, text: o.option }));
           }
-          if (playerRole === 'witness') {
-            return { text: 'witness', cls: 'success' };
-          }
-          return { text: 'unknown', cls: 'unknown' };
         }
-
-        // Investigator POV: only know FS.
-        return { text: 'unknown', cls: 'unknown' };
+        return row;
       }
 
       function renderSceneCompact(state, cardNames) {
@@ -636,33 +522,14 @@
         const locOpts = (locTile && lcd?.optionsByTile?.get(locTile)) || [];
         const causeOpts = (causeTile && lcd?.optionsByTile?.get(causeTile)) || [];
 
-        function chipsRow(opts, selectedId) {
-          const row = el('div', { class: 'tags' });
-          if (!opts || !opts.length) {
-            row.appendChild(el('span', { class: 'muted', text: '—' }));
-            return row;
-          }
-          for (const o of opts) {
-            const cls = ['tag'];
-            if (selectedId && o.id === selectedId) cls.push('selected');
-            row.appendChild(el('span', { class: cls.join(' '), title: o.id, text: o.option }));
-          }
-          return row;
-        }
-
         return el('div', { class: 'card', style: 'background: var(--panel2); margin-top: 8px' }, [
           el('div', { style: 'font-weight: 650; margin-bottom: 6px', text: 'Scene' }),
 
-          el('div', { class: 'line' }, [
-            el('span', { class: 'muted', text: 'Location tile:' }),
-            el('span', { text: locTile || '—' }),
-          ]),
+          // Only show tile names (no "Location tile:" / "Cause tile:" prefix)
+          el('div', { style: 'font-weight: 600; margin-top: 2px', text: locTile || '—' }),
           chipsRow(locOpts, locId),
 
-          el('div', { class: 'line', style: 'margin-top: 8px' }, [
-            el('span', { class: 'muted', text: 'Cause tile:' }),
-            el('span', { text: causeTile || '—' }),
-          ]),
+          el('div', { style: 'font-weight: 600; margin-top: 10px', text: causeTile || '—' }),
           chipsRow(causeOpts, causeId),
         ]);
       }
@@ -682,8 +549,8 @@
 
         function mkTileBlock(title, tile, opts, current, setCurrent) {
           const header = el('div', { class: 'line' }, [
-            el('span', { class: 'muted', text: title + ':' }),
-            el('span', { text: tile || '—' }),
+            // Show only the tile name (no "Location:" / "Cause of Death:" label)
+            el('span', { style: 'font-weight: 600', text: tile || '—' }),
           ]);
 
           const tags = el('div', { class: 'tags' });
@@ -737,9 +604,7 @@
           },
         });
 
-        const outer = el('div', { class: 'scenePicker' }, [
-          el('div', { class: 'muted', text: 'Set the scene (FS only)' }),
-        ]);
+        const outer = el('div', { class: 'scenePicker' }, [el('div', { class: 'muted', text: 'Set the scene (FS only)' })]);
 
         outer.appendChild(mkTileBlock('Location', locTile, locOpts, selLoc, (v) => (selLoc = v)));
         outer.appendChild(mkTileBlock('Cause of Death', causeTile, causeOpts, selCause, (v) => (selCause = v)));
@@ -760,54 +625,94 @@
         return el('div', { id: 'fsSceneInnerMount' }, [outer]);
       }
 
-      function renderPlayer(p, cardNames, state, pov) {
+      function renderFsSceneBulletsCompact(state, cardNames) {
+        const tiles = (state?.fs_scene_tiles || []).slice(0, 4);
+        const picks = state?.fs_scene_bullets || {};
+        const scene = cardNames?.scene;
+
+        const wrap = el('div', { class: 'card', style: 'background: var(--panel2); margin-top: 10px' }, [
+          el('div', { style: 'font-weight: 650; margin-bottom: 6px', text: 'Scene tiles' }),
+        ]);
+
+        if (!tiles.length) {
+          wrap.appendChild(el('div', { class: 'muted', text: 'Waiting for dealt scene tiles…' }));
+          return wrap;
+        }
+
+        const cards = el('div', { class: 'sceneCards' });
+        for (const tile of tiles) {
+          const opts = (tile && scene?.optionsByTile?.get(tile)) || [];
+          const selected = picks[tile] || null;
+
+          const c = el('div', { class: 'card sceneCard' }, [
+            // Only show the tile name (no "Tile:" label)
+            el('div', { style: 'font-weight: 600', text: tile || '—' }),
+            chipsRow(opts, selected),
+          ]);
+
+          cards.appendChild(c);
+        }
+
+        wrap.appendChild(cards);
+        return wrap;
+      }
+
+      function renderFsPanel(state, cardNames) {
+        const players = (state.players || []).slice().sort((a, b) => a.seat - b.seat);
+        const fs = players.find((p) => p.role === 'forensic_scientist');
+        const fsId = fs?.player_id || null;
+
+        return el('div', { class: 'card' }, [
+          el('div', { class: 'title' }, [
+            el('h1', { text: 'Forensic Scientist' }),
+            el('small', { class: 'muted', text: `phase: ${state.phase}` }),
+          ]),
+
+          // Always show these as chip cards
+          state.phase === 'setup_awaiting_fs_scene_pick' && fsId
+            ? renderFsScenePicker(state, cardNames, fsId)
+            : renderSceneCompact(state, cardNames),
+
+          // Also show the 4 scene tiles + selected bullet chips when available
+          renderFsSceneBulletsCompact(state, cardNames),
+        ]);
+      }
+
+      function renderPlayer(p, cardNames, state) {
+        const pov = getPov();
         const isFs = p.role === 'forensic_scientist';
-        const badge = roleBadgeFor(p.role, pov, isFs);
+
+        let roleText = 'unknown';
+        if (isFs || pov === 'fs') roleText = formatRole(p.role);
+        else if (canSeeMurdererRoles(pov) && (p.role === 'murderer' || p.role === 'accomplice')) roleText = formatRole(p.role);
 
         const display = p.display_name || p.player_id;
+
+        const roleCls = ['roleTag'];
+        if (roleText === 'unknown') roleCls.push('unknown');
+        if (p.role === 'murderer' || p.role === 'accomplice') {
+          // highlight these identities in red when the POV can know them
+          if (canSeeMurdererRoles(pov)) roleCls.push('danger');
+        }
+        if (p.role === 'witness') {
+          // witness highlight (FS always sees)
+          if (pov === 'fs') roleCls.push('witness');
+        }
 
         const header = el('header', {}, [
           el('div', {}, [
             el('div', { text: display, style: 'font-weight: 600' }),
-            el('div', { class: 'muted', text: `${p.player_id}` }),
+            el('div', { class: 'muted' }, [
+              el('span', { text: `${p.player_id} · ` }),
+              el('span', { class: roleCls.join(' '), text: roleText }),
+            ]),
           ]),
           el('span', { class: 'pill', text: p.is_ai ? 'AI' : 'Human' }),
         ]);
 
-        // Determine whether to highlight this player's "identity" chip.
-        const highlightIdentity = canSeeMurdererAccompliceHighlight(pov) && (p.role === 'murderer' || p.role === 'accomplice');
-        const highlightWitness = (pov === 'fs') && (p.role === 'witness');
-
-        const roleCls = ['roleTag'];
-        if (badge.cls) roleCls.push(badge.cls);
-        if (highlightIdentity) roleCls.push('danger');
-        if (highlightWitness) roleCls.push('success');
-
-        const roleLine = el('div', { class: 'line' }, [
-          el('span', { class: 'muted', text: 'Role:' }),
-          el('span', { class: roleCls.join(' '), text: badge.text }),
-        ]);
-
-        // FS card: replace means/clues with scene UI.
-        if (isFs) {
-          const body = [roleLine];
-
-          if (pov === 'fs' && state.phase === 'setup_awaiting_fs_scene_pick') {
-            body.push(renderFsScenePicker(state, cardNames, p.player_id));
-          } else {
-            body.push(renderSceneCompact(state, cardNames));
-          }
-
-          return el('div', { class: 'card player' }, [header, el('div', { class: 'hand' }, body)]);
-        }
-
-        // Selected chips for murderer solution (only visible in FS + murderer POV)
-        let selectedMeans = null;
-        let selectedClue = null;
-        if (canSeeMurderSelections(pov)) {
-          selectedMeans = state?.solution?.means_id || null;
-          selectedClue = state?.solution?.clue_id || null;
-        }
+        // Show cards for everyone, but only highlight murderer selections when allowed.
+        const selectedMeans = canSeeMurderSelections(pov) ? state?.solution?.means_id || null : null;
+        const selectedClue = canSeeMurderSelections(pov) ? state?.solution?.clue_id || null : null;
 
         const means = el('div', { class: 'line' }, [el('span', { class: 'muted', text: 'Means:' })]);
         for (const id of (p.hand?.means_ids || [])) {
@@ -825,35 +730,19 @@
           clues.appendChild(el('span', { class: cls.join(' '), 'data-id': id, title: id, text: name }));
         }
 
-        // In FS view show role info for everyone; in other views roles are "unknown" except FS.
-        // We always show cards (as per your earlier FS POV rule), but only highlight selection chips
-        // when permitted.
-        return el('div', { class: 'card player' }, [
-          header,
-          el('div', { class: 'hand' }, [roleLine, means, clues]),
-        ]);
+        return el('div', { class: 'card player' }, [header, el('div', { class: 'hand' }, [means, clues])]);
       }
 
-      function renderScene(state, cardNames) {
-        const locId = state?.fs_location_id || null;
-        const causeId = state?.fs_cause_id || null;
+      function renderPlayersColumn(state, cardNames) {
+        const players = (state.players || []).slice().sort((a, b) => a.seat - b.seat);
+        const fs = players.find((p) => p.role === 'forensic_scientist');
+        const others = players.filter((p) => p !== fs);
 
-        const lcdById = cardNames?.lcd?.byId || null;
-        const locLabel = locId && lcdById?.get(locId) ? `${lcdById.get(locId).option} (${lcdById.get(locId).tile})` : (locId || '—');
-        const causeLabel =
-          causeId && lcdById?.get(causeId) ? `${lcdById.get(causeId).option} (${lcdById.get(causeId).tile})` : (causeId || '—');
-
-        const lines = [];
-        lines.push(el('div', { class: 'line' }, [el('span', { class: 'muted', text: 'Location:' }), el('span', { text: locLabel })]));
-        lines.push(el('div', { class: 'line' }, [el('span', { class: 'muted', text: 'Cause of Death:' }), el('span', { text: causeLabel })]));
-
-        return el('div', { class: 'card', style: 'margin-bottom: 12px' }, [
-          el('div', { class: 'title' }, [
-            el('h1', { text: 'Scene (public)' }),
-            el('small', { class: 'muted', text: `phase: ${state.phase}` }),
-          ]),
-          ...lines,
-        ]);
+        const col = el('div');
+        for (const p of others) {
+          col.appendChild(renderPlayer(p, cardNames, state));
+        }
+        return col;
       }
 
       function renderDiscussion(state, playerId) {
@@ -897,48 +786,6 @@
         ]);
       }
 
-      function layoutSeatsSquare(state, rootEl, cardNames) {
-        rootEl.innerHTML = '';
-
-        const pov = getPov();
-        const players = (state.players || []).slice().sort((a, b) => a.seat - b.seat);
-        const fs = players.find((p) => p.role === 'forensic_scientist');
-        const others = players.filter((p) => p !== fs);
-
-        const center = el('div', { class: 'center', id: 'centerCol' });
-        // Add scene block for everyone.
-        center.appendChild(renderScene(state, cardNames));
-        rootEl.appendChild(center);
-
-        const isStacked = window.matchMedia('(max-width: 980px)').matches;
-        if (isStacked) {
-          for (const p of others) rootEl.appendChild(el('div', { class: 'seat' }, [renderPlayer(p, cardNames, state, pov)]));
-          if (fs) rootEl.appendChild(el('div', { class: 'seat fs' }, [renderPlayer(fs, cardNames, state, pov)]));
-          return;
-        }
-
-        const slots = [
-          { className: 'slot fs bottomMid', player: fs },
-          { className: 'slot bottomLeft', player: null },
-          { className: 'slot midLeft', player: null },
-          { className: 'slot topLeft', player: null },
-          { className: 'slot midTop', player: null },
-          { className: 'slot topRight', player: null },
-          { className: 'slot midRight', player: null },
-          { className: 'slot bottomRight', player: null },
-        ];
-
-        const ringSlots = slots.slice(1);
-        for (let i = 0; i < others.length; i++) {
-          ringSlots[i % ringSlots.length].player = others[i];
-        }
-
-        for (const s of slots) {
-          if (!s.player) continue;
-          rootEl.appendChild(el('div', { class: s.className }, [renderPlayer(s.player, cardNames, state, pov)]));
-        }
-      }
-
       async function renderGame(gameId) {
         app.innerHTML = '';
 
@@ -978,10 +825,7 @@
               sel.value = getPov();
               sel.addEventListener('change', () => {
                 setPov(sel.value);
-                // trigger a rerender by refetching state quickly
-                // (rerender uses getPov())
-                const evt = new CustomEvent('deception:pov_changed');
-                window.dispatchEvent(evt);
+                window.dispatchEvent(new CustomEvent('deception:pov_changed'));
               });
               return sel;
             })(),
@@ -992,7 +836,10 @@
           el('div', { id: 'gameErr', class: 'error', style: 'margin-top: 10px' }),
         ]);
 
-        const board = el('div', { class: 'tableWrap' }, [el('div', { class: 'table', id: 'tableRoot' })]);
+        const board = el('div', { class: 'board' }, [
+          el('div', { class: 'leftCol' }, [el('div', { id: 'fsPanel' }), el('div', { id: 'chatPanel' })]),
+          el('div', { class: 'rightCol', id: 'playersPanel' }),
+        ]);
 
         app.appendChild(top);
         app.appendChild(controls);
@@ -1017,16 +864,28 @@
           state.players.find((p) => p.role === 'forensic_scientist')?.player_id || state.players[0]?.player_id || 'p1';
         qs('#postAs').value = fsDefault;
 
-        const tableRoot = qs('#tableRoot');
-
         function rerender(newState) {
           state = newState;
-          layoutSeatsSquare(state, tableRoot, cardNames);
 
-          const center = qs('#centerCol');
           const playerId = qs('#postAs').value.trim() || fsDefault;
-          center.innerHTML = '';
-          center.appendChild(renderDiscussion(state, playerId));
+
+          const fsPanel = qs('#fsPanel');
+          if (fsPanel) {
+            fsPanel.innerHTML = '';
+            fsPanel.appendChild(renderFsPanel(state, cardNames));
+          }
+
+          const chatPanel = qs('#chatPanel');
+          if (chatPanel) {
+            chatPanel.innerHTML = '';
+            chatPanel.appendChild(renderDiscussion(state, playerId));
+          }
+
+          const playersPanel = qs('#playersPanel');
+          if (playersPanel) {
+            playersPanel.innerHTML = '';
+            playersPanel.appendChild(renderPlayersColumn(state, cardNames));
+          }
 
           const log = qs('#log');
           if (log) log.scrollTop = log.scrollHeight;
@@ -1104,4 +963,3 @@
     </script>
   </body>
 </html>
-
